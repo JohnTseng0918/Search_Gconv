@@ -1,5 +1,6 @@
 import torch
 import torchvision
+import torch.optim as optim
 import utils
 from models.resnet import *
 
@@ -9,9 +10,12 @@ class warmuper:
         self.model = cifar_resnet56()
         self.dataset = args.dataset
         self.batch_size = args.batch_size
+        self.epoch = args.epoch
         self.get_dataloader()
+
     def create_model(self):
         pass
+
     def get_dataloader(self):
         if self.dataset == "cifar10":
             train_transforms = torchvision.transforms.Compose([
@@ -45,8 +49,17 @@ class warmuper:
 
     def random_group_train(self):
         pass
+
     def validate(self):
         criterion = nn.CrossEntropyLoss()
         acc, loss = utils.validate(self.testloader, self.model, criterion)
         print("top1 acc:", acc)
         print("avg loss:", loss)
+
+    def train(self):
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(self.model.parameters())
+        utils.train(self.trainloader, self.model, optimizer, criterion, self.epoch)
+    
+    def save_model(self):
+        pass

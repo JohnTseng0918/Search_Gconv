@@ -45,6 +45,41 @@ def validate(validate_loader, model, criterion):
 
     return top1.avg, losses.avg
 
+def train_one_epoch(train_loader, model, optimizer, criterion):
+    model.cuda()
+    model.train()
+
+    losses = AverageMeter()
+    top1 = AverageMeter()
+    top5 = AverageMeter()
+
+    for i, (inputs, labels) in enumerate(train_loader):
+        inputs = inputs.cuda()
+        labels = labels.cuda()
+
+        optimizer.zero_grad()
+        outputs = model(inputs)
+
+        loss = criterion(outputs, labels)
+        loss.backward()
+
+        optimizer.step()
+
+        prec1, prec5 = accuracy(outputs, labels, topk=(1, 5))
+        n = inputs.size(0)
+        losses.update(loss.item(), n)
+        top1.update(prec1.item(), n)
+        top5.update(prec5.item(), n)
+
+    return top1.avg, losses.avg
+
+def train(train_loader, model, optimizer, criterion, epoch):
+    for e in range(epoch):
+        acc, loss = train_one_epoch(train_loader, model, optimizer, criterion)
+        print("epoch", e+1, ":")
+        print("top1 acc:", acc)
+        print("avg loss:", loss)
+
 class AverageMeter(object):
     """Computes and stores the average and current value
        Imported from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L363-L384
