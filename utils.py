@@ -43,7 +43,7 @@ def validate(validate_loader, model, criterion):
         top1.update(prec1.item(), n)
         top5.update(prec5.item(), n)
 
-    return top1.avg, losses.avg
+    return top1.avg, top5.avg, losses.avg
 
 def train_one_epoch(train_loader, model, optimizer, criterion):
     model.cuda()
@@ -71,14 +71,16 @@ def train_one_epoch(train_loader, model, optimizer, criterion):
         top1.update(prec1.item(), n)
         top5.update(prec5.item(), n)
 
-    return top1.avg, losses.avg
+    return top1.avg, top5.avg, losses.avg
 
 def train(train_loader, model, optimizer, criterion, epoch):
     for e in range(epoch):
-        acc, loss = train_one_epoch(train_loader, model, optimizer, criterion)
+        acc1, acc5, loss = train_one_epoch(train_loader, model, optimizer, criterion)
         print("epoch", e+1, ":")
-        print("top1 acc:", acc)
+        print("top1 acc:", acc1)
+        print("top5 acc:", acc5)
         print("avg loss:", loss)
+        print("-------------------------------------------------")
 
 class AverageMeter(object):
     """Computes and stores the average and current value

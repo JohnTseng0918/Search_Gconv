@@ -9,7 +9,8 @@ class warmuper:
     def __init__(self, args):
         self.model = cifar_resnet56()
         self.dataset = args.dataset
-        self.batch_size = args.batch_size
+        self.train_batch_size = args.train_batch_size
+        self.validate_batch_size = args.validate_batch_size
         self.epoch = args.epoch
         self.get_dataloader()
 
@@ -44,22 +45,25 @@ class warmuper:
         elif self.dataset == "imagenet":
             pass
 
-        self.trainloader = torch.utils.data.DataLoader(self.train_set, batch_size=self.batch_size,shuffle=True)
-        self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.batch_size,shuffle=False)
+        self.trainloader = torch.utils.data.DataLoader(self.train_set, batch_size=self.train_batch_size,shuffle=True)
+        self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.validate_batch_size,shuffle=False)
 
     def random_group_train(self):
         pass
 
     def validate(self):
         criterion = nn.CrossEntropyLoss()
-        acc, loss = utils.validate(self.testloader, self.model, criterion)
-        print("top1 acc:", acc)
+        acc1, acc5, loss = utils.validate(self.testloader, self.model, criterion)
+        print("validate:")
+        print("top1 acc:", acc1)
+        print("top5 acc:", acc5)    
         print("avg loss:", loss)
+        print("-------------------------------------------------")
 
     def train(self):
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(self.model.parameters())
         utils.train(self.trainloader, self.model, optimizer, criterion, self.epoch)
     
-    def save_model(self):
-        pass
+    def save_model(self, PATH):
+        torch.save(self.model.state_dict(), PATH)
