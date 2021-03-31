@@ -1,16 +1,23 @@
 import torch
 import torch.nn as nn
+from utils import get_random_groups
 
-
-def conv3x3(in_planes, out_planes, stride=1):
+def conv3x3(in_planes, out_planes, stride=1, random_group=False):
     """3x3 convolution with padding"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+    if random_group==False:
+      return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+    else:
+      g = get_random_groups(in_planes, out_planes)
+      return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, groups = g, bias=False)
 
 
-def conv1x1(in_planes, out_planes, stride=1):
+def conv1x1(in_planes, out_planes, stride=1, random_group=False):
     """1x1 convolution"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
-
+    if random_group==False:
+      return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+    else:
+      g = get_random_groups(in_planes, out_planes)
+      return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, groups = g, bias=False)
 
 class BasicBlock(nn.Module):
   """ The stacked convolution block design.
@@ -20,7 +27,7 @@ class BasicBlock(nn.Module):
   """
   expansion = 1
 
-  def __init__(self, in_planes, planes, stride=1, downsample=None, **kwargs):
+  def __init__(self, in_planes, planes, stride=1, downsample=None, random_group=False, **kwargs):
     """ CTOR.
     
     Args:
@@ -33,10 +40,10 @@ class BasicBlock(nn.Module):
       mask(bool): whether to build masked convolution
     """
     super(BasicBlock, self).__init__()
-    self.conv1 = conv3x3(in_planes, planes, stride=stride, **kwargs)
+    self.conv1 = conv3x3(in_planes, planes, stride=stride, random_group=random_group, **kwargs)
     self.bn1 = nn.BatchNorm2d(planes)
     self.relu = nn.ReLU(inplace=True)
-    self.conv2 = conv3x3(planes, planes, **kwargs)
+    self.conv2 = conv3x3(planes, planes, random_group=random_group, **kwargs)
     self.bn2 = nn.BatchNorm2d(planes)
 
     self.downsample = downsample
@@ -68,7 +75,7 @@ class Bottleneck(nn.Module):
   """
   expansion = 4
 
-  def __init__(self, in_planes, planes, stride=1, downsample=None, **kwargs):
+  def __init__(self, in_planes, planes, stride=1, downsample=None, random_group=False, **kwargs):
     """ CTOR.
     
     Args:
@@ -79,11 +86,11 @@ class Bottleneck(nn.Module):
     """
 
     super(Bottleneck, self).__init__()
-    self.conv1 = conv1x1(in_planes, planes, **kwargs)
+    self.conv1 = conv1x1(in_planes, planes, random_group=random_group, **kwargs)
     self.bn1 = nn.BatchNorm2d(planes)
-    self.conv2 = conv3x3(planes, planes, stride=stride, **kwargs)
+    self.conv2 = conv3x3(planes, planes, stride=stride, random_group=random_group, **kwargs)
     self.bn2 = nn.BatchNorm2d(planes)
-    self.conv3 = conv1x1(planes, planes * self.expansion, **kwargs)
+    self.conv3 = conv1x1(planes, planes * self.expansion, random_group=random_group, **kwargs)
     self.bn3 = nn.BatchNorm2d(planes * self.expansion)
     self.relu = nn.ReLU(inplace=True)
 
@@ -115,16 +122,16 @@ class Bottleneck(nn.Module):
 
 class CifarResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=10):
+    def __init__(self, block, layers, num_classes=10, random_group=False):
         super(CifarResNet, self).__init__()
         self.inplanes = 16
-        self.conv1 = conv3x3(3, 16)
+        self.conv1 = conv3x3(3, 16, random_group=random_group)
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU(inplace=True)
 
-        self.layer1 = self._make_layer(block, 16, layers[0])
-        self.layer2 = self._make_layer(block, 32, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 64, layers[2], stride=2)
+        self.layer1 = self._make_layer(block, 16, layers[0], random_group=random_group)
+        self.layer2 = self._make_layer(block, 32, layers[1], stride=2, random_group=random_group)
+        self.layer3 = self._make_layer(block, 64, layers[2], stride=2, random_group=random_group)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(64 * block.expansion, num_classes)
@@ -136,19 +143,19 @@ class CifarResNet(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def _make_layer(self, block, planes, blocks, stride=1):
+    def _make_layer(self, block, planes, blocks, stride=1, random_group=False):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
-                conv1x1(self.inplanes, planes * block.expansion, stride),
+                conv1x1(self.inplanes, planes * block.expansion, stride, random_group=random_group),
                 nn.BatchNorm2d(planes * block.expansion),
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
+        layers.append(block(self.inplanes, planes, stride, downsample, random_group=random_group))
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
+            layers.append(block(self.inplanes, planes, random_group=random_group))
 
         return nn.Sequential(*layers)
 
@@ -167,10 +174,13 @@ class CifarResNet(nn.Module):
 
         return x
 
-def cifar_resnet56(pretrained=None, **kwargs):
-    if pretrained is None:
-        model = CifarResNet(BasicBlock, [9, 9, 9], num_classes=100)
+def cifar_resnet56(pretrained=None, random_group=False, **kwargs):
+    if random_group==False:
+      if pretrained is None:
+          model = CifarResNet(BasicBlock, [9, 9, 9], num_classes=100)
+      else:
+          model = CifarResNet(BasicBlock, [9, 9, 9], num_classes=100)
+          model.load_state_dict(torch.load("./pretrained/cifar100-resnet56.pth"))
     else:
-        model = CifarResNet(BasicBlock, [9, 9, 9], num_classes=100)
-        model.load_state_dict(torch.load("./pretrained/cifar100-resnet56.pth"))
+      model = CifarResNet(BasicBlock, [9, 9, 9], num_classes=100, random_group=True)
     return model

@@ -4,15 +4,13 @@ import torch.optim as optim
 import utils
 from models.resnet import *
 
-
 class warmuper:
     def __init__(self, args):
-        self.model = cifar_resnet56()
+        self.model = cifar_resnet56(pretrained=True)
         self.dataset = args.dataset
         self.train_batch_size = args.train_batch_size
         self.validate_batch_size = args.validate_batch_size
         self.epoch = args.epoch
-        self.get_dataloader()
 
     def create_model(self):
         pass
@@ -62,6 +60,9 @@ class warmuper:
     
     def random_group_train(self):
         pass
+
+    def get_random_group_model(self):
+        self.random_model = cifar_resnet56(random_group=True)
 
     def validate(self):
         criterion = nn.CrossEntropyLoss()

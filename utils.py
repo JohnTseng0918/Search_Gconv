@@ -1,5 +1,6 @@
 import torch
 from functools import reduce
+import random
 
 def factors(n):
     """
@@ -7,6 +8,15 @@ def factors(n):
     """    
     return set(reduce(list.__add__, 
                 ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))
+
+def get_groups_choice_list(inchannel, outchannel):
+    fin, fout = factors(inchannel), factors(outchannel)
+    g_list = list(sorted(fin.intersection(fout)))
+    return g_list
+
+def get_random_groups(inchannel, outchannel):
+    g_list = get_groups_choice_list(inchannel, outchannel)
+    return random.choice(g_list)
 
 def accuracy(output, target, topk=(1,)):
     maxk = max(topk)
