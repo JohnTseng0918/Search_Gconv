@@ -46,18 +46,6 @@ class warmuper:
         self.trainloader = torch.utils.data.DataLoader(self.train_set, batch_size=self.train_batch_size,shuffle=True)
         self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.validate_batch_size,shuffle=False)
 
-    def show_model(self):
-        print(self.model)
-
-    def get_group_choice(self):
-        self.group_list = []
-        for name, mod in self.model.named_modules():
-            if isinstance(mod, torch.nn.modules.conv.Conv2d):
-                inchannel, outchannel = mod.weight.shape[1], mod.weight.shape[0]
-                fin, fout = utils.factors(inchannel), utils.factors(outchannel)
-                g_list = list(sorted(fin.intersection(fout)))
-                self.group_list.append(g_list)
-    
     def random_group_train(self):
         pass
 
