@@ -3,6 +3,8 @@ import torchvision
 import torch.optim as optim
 import utils
 from models.resnet import *
+from group_pruner import gconv_prune
+
 
 class warmuper:
     def __init__(self, args):
@@ -51,6 +53,29 @@ class warmuper:
 
     def get_random_group_model(self):
         self.random_model = cifar_resnet56(random_group=True)
+
+    def show_model_buffer(self):
+        for name, buf in self.model.named_buffers():
+            print(name, buf.shape)
+
+    def reset_prune_buffer(self):
+        for name, buf in self.model.named_buffers():
+            if buf.dim()==4:
+                buf.fill_(1)
+
+    def show_model_param(self):
+        for name, param  in self.model.named_parameters():
+            print(name, param.shape)
+
+    def print_conv_weight(self):
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                print(mod.weight)
+
+    def apply_random_mask(self):
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                gconv_prune(mod, name='weight')
 
     def validate(self):
         criterion = nn.CrossEntropyLoss()
