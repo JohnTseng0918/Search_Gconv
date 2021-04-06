@@ -53,7 +53,7 @@ class warmuper:
         self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.validate_batch_size,shuffle=False)
 
     def random_group_train(self):
-        for i in range(10):
+        for i in range(100):
             print("random group train iteration:", i)
             self.set_prune_buffer_random_group()
             print(self.genome_type)
