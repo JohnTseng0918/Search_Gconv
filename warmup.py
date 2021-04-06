@@ -3,7 +3,8 @@ import torchvision
 import torch.optim as optim
 import utils
 from models.resnet import *
-from group_pruner import gconv_prune
+from group_pruner import gconv_prune_init
+
 
 
 class warmuper:
@@ -13,6 +14,9 @@ class warmuper:
         self.train_batch_size = args.train_batch_size
         self.validate_batch_size = args.validate_batch_size
         self.epoch = args.epoch
+        self.genome_type=[]
+
+        self.init_mask()
 
     def create_model(self):
         pass
@@ -49,33 +53,39 @@ class warmuper:
         self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.validate_batch_size,shuffle=False)
 
     def random_group_train(self):
-        pass
+        for i in range(10):
+            print("random group train iteration:", i)
+            self.set_prune_buffer_random_group()
+            print(self.genome_type)
+            self.train()
+            self.validate()
+            self.set_prune_buffer_one()
 
-    def get_random_group_model(self):
-        self.random_model = cifar_resnet56(random_group=True)
-
-    def show_model_buffer(self):
-        for name, buf in self.model.named_buffers():
-            print(name, buf.shape)
-
-    def reset_prune_buffer(self):
+    def set_prune_buffer_one(self):
         for name, buf in self.model.named_buffers():
             if buf.dim()==4:
                 buf.fill_(1)
+    
+    def set_prune_buffer_random_group(self):
+        self.genome_type=[]
+        for name, buf in self.model.named_buffers():
+            if buf.dim()==4:
+                n,c,h,w = buf.shape
+                g = utils.get_random_groups(c, n)
+                outc_start, intc_start = 0, 0
+                outc_interval = int(n/g)
+                intc_interval = int(c/g)
+                buf.fill_(0)
+                for i in range(g):
+                    buf[outc_start:outc_start+outc_interval, intc_start:intc_start+intc_interval,:,:] = 1
+                    outc_start+=outc_interval
+                    intc_start+=intc_interval
+                self.genome_type.append(g)
 
-    def show_model_param(self):
-        for name, param  in self.model.named_parameters():
-            print(name, param.shape)
-
-    def print_conv_weight(self):
+    def init_mask(self):
         for name, mod in self.model.named_modules():
             if isinstance(mod, torch.nn.modules.conv.Conv2d):
-                print(mod.weight)
-
-    def apply_random_mask(self):
-        for name, mod in self.model.named_modules():
-            if isinstance(mod, torch.nn.modules.conv.Conv2d):
-                gconv_prune(mod, name='weight')
+                gconv_prune_init(mod, name='weight')
 
     def validate(self):
         criterion = nn.CrossEntropyLoss()
