@@ -17,14 +17,22 @@ def get_args():
 
 def main():
     args = get_args()
+
     warmer = warmuper(args)
     warmer.get_dataloader()
     warmer.random_group_train()
     warmer.remove_mask()
     warmer.save_model("./warmup.pth")
+    del warmer
+
     spos = OneShot(args)
     spos.load_model()
     spos.build_oneshot()
+    spos.get_dataloader()
+
+    for i in range(10):
+        spos.random_model()
+        spos.validate()
 
 
 if __name__ == "__main__":
