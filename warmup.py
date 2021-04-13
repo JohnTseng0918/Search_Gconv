@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import torchvision
 import torch.optim as optim
 import utils
@@ -14,6 +15,7 @@ class warmuper:
         self.train_batch_size = args.train_batch_size
         self.validate_batch_size = args.validate_batch_size
         self.epoch = args.epoch
+        self.warmup_epoch = args.warmup_epoch
         self.genome_type=[]
 
         self.init_mask()
@@ -53,7 +55,7 @@ class warmuper:
         self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.validate_batch_size,shuffle=False)
 
     def random_group_train(self):
-        for i in range(100):
+        for i in range(self.warmup_epoch):
             print("random group train iteration:", i)
             self.set_prune_buffer_random_group()
             print(self.genome_type)
@@ -86,6 +88,11 @@ class warmuper:
         for name, mod in self.model.named_modules():
             if isinstance(mod, torch.nn.modules.conv.Conv2d):
                 gconv_prune_init(mod, name='weight')
+
+    def remove_mask(self):
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                mod = nn.utils.prune.remove(mod, name='weight')
 
     def validate(self):
         criterion = nn.CrossEntropyLoss()
