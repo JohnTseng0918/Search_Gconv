@@ -1,6 +1,7 @@
 import torch
 import torchvision
 import torch.nn as nn
+import torch.optim as optim
 import random
 import utils
 from models.resnet import *
@@ -11,9 +12,11 @@ class OneShot:
         self.dataset = args.dataset
         self.train_batch_size = args.train_batch_size
         self.validate_batch_size = args.validate_batch_size
+        self.genome_type=[]
+        self.genome_idx_type=[]
 
-    def load_model(self):
-        self.model.load_state_dict(torch.load("./warmup.pth"))
+    def load_model(self, PATH):
+        self.model.load_state_dict(torch.load(PATH))
         
     def build_oneshot(self):
         self.group_mod_list = nn.ModuleList()
@@ -32,18 +35,29 @@ class OneShot:
                         tmpweight = mod.weight[outc_start:outc_start+outc_interval, intc_start:intc_start+intc_interval,:,:]
                         w = torch.cat((w, tmpweight), 0)
                     new_mod.weight = torch.nn.Parameter(w)
-                    
+
                     sub_mod_list.append(new_mod)
                 self.group_mod_list.append(sub_mod_list)
 
     def random_model(self):
         idx = 0
+        self.genome_type=[]
+        self.genome_idx_type=[]
         for name, mod in self.model.named_modules():
             if isinstance(mod, torch.nn.modules.conv.Conv2d):
                 t = random.randint(0, len(self.group_mod_list[idx])-1)
-                mod.weight = self.group_mod_list[idx][t].weight
+                mod.weight = torch.nn.Parameter(self.group_mod_list[idx][t].weight)
                 mod.groups = self.group_mod_list[idx][t].groups
-                #print(name, mod)
+                self.genome_type.append(mod.groups)
+                self.genome_idx_type.append(t)
+                idx+=1
+
+    def update_random_model_weight(self):
+        idx = 0
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                t = self.genome_idx_type[idx]
+                self.group_mod_list[idx][t].weight = torch.nn.Parameter(mod.weight)
                 idx+=1
 
     def print_model_conv2d(self):
@@ -55,6 +69,44 @@ class OneShot:
         inputs = torch.randn((64,3,32,32))
         outputs = self.model(inputs)
         print(outputs.shape)
+    
+    def train(self):
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(self.model.parameters())
+
+        losses = utils.AverageMeter()
+        top1 = utils.AverageMeter()
+        top5 = utils.AverageMeter()
+
+        for inputs, labels in self.trainloader:
+            self.random_model()
+            #self.show_genome_type()
+            self.model.cuda()
+
+            inputs = inputs.cuda()
+            labels = labels.cuda()
+
+            optimizer.zero_grad()
+            outputs = self.model(inputs)
+
+            loss = criterion(outputs, labels)
+            loss.backward()
+
+            optimizer.step()
+            self.update_random_model_weight()
+
+            prec1, prec5 = utils.accuracy(outputs, labels, topk=(1, 5))
+            n = inputs.size(0)
+            losses.update(loss.item(), n)
+            top1.update(prec1.item(), n)
+            top5.update(prec5.item(), n)
+
+        print("train:")
+        print("top1 acc:", top1.avg)
+        print("top5 acc:", top5.avg)
+        print("avg loss:", losses.avg)
+        print("-------------------------------------------------")
+
 
     def validate(self):
         criterion = nn.CrossEntropyLoss()
@@ -64,6 +116,12 @@ class OneShot:
         print("top5 acc:", acc5)    
         print("avg loss:", loss)
         print("-------------------------------------------------")
+
+    def show_genome_type(self):
+        print(self.genome_type)
+
+    def show_genome_idx_type(self):
+        print(self.genome_idx_type)
 
     def get_dataloader(self):
         if self.dataset == "cifar10":
