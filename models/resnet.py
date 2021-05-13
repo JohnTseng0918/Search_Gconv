@@ -172,3 +172,12 @@ def cifar_resnet56(pretrained=None, **kwargs):
         model.load_state_dict(torch.load("./pretrained/cifar100-resnet56.pth"))
 
     return model
+
+def cifar_resnet20(pretrained=None, **kwargs):
+    if pretrained is None:
+        model = CifarResNet(BasicBlock, [3, 3, 3], num_classes=100)
+    else:
+        model = CifarResNet(BasicBlock, [3, 3, 3], num_classes=100)
+        model.load_state_dict(torch.load("./pretrained/cifar100-resnet20.pth"))
+
+    return model

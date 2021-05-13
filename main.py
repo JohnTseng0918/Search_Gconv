@@ -18,11 +18,19 @@ def main():
     
     nas = SuperNet(args)
     nas.load_model()
-    nas.build_oneshot()
     nas.get_dataloader()
+    nas.build_oneshot()
     nas.warnup_oneshot()
-    for i in range(100):
+
+    for i in range(50):
+        print("epoch", i+1)
         nas.train_supernet()
+
+    for j in range(20):
+        print("random model:", j+1)
+        nas.random_model()
+        nas.print_genome()
+        nas.validate()
 
 
 if __name__ == "__main__":

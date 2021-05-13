@@ -16,7 +16,7 @@ class SuperNet:
         self.genome_idx_type=[]
 
     def load_model(self):
-        self.model = cifar_resnet56(pretrained=True)
+        self.model = cifar_resnet20(pretrained=True)
 
     def build_oneshot(self):
         self.group_mod_list = nn.ModuleList()
@@ -39,6 +39,9 @@ class SuperNet:
     def warnup_oneshot(self):
         idx=0
         for name, mod in self.model.named_modules():
+            mod.requires_grad_(False)
+
+        for name, mod in self.model.named_modules():
             if isinstance(mod, torch.nn.modules.conv.Conv2d):
                 n, c, h, w = mod.weight.shape
                 if h==1 or w ==1:
@@ -46,19 +49,18 @@ class SuperNet:
                 if (len(self.group_mod_list[idx])==1):
                     idx+=1
                     continue
-                #print(idx, len(self.group_mod_list[idx]))
                 for choice in self.group_mod_list[idx]:
-                    #print(choice)
                     if choice.groups==1:
                         continue
                     mod.weight = torch.nn.Parameter(choice.weight)
                     mod.groups = choice.groups
+                    mod.requires_grad_(True)
                     print("idx:", idx)
                     print(choice)
-                    #print(choice.weight.shape)
                     self.validate()
                     self.train()
                     self.validate()
+                    mod.requires_grad_(False)
                     choice.weight = torch.nn.Parameter(mod.weight)
 
                 mod.weight = torch.nn.Parameter(self.group_mod_list[idx][0].weight)
@@ -84,6 +86,23 @@ class SuperNet:
                 self.genome_idx_type.append(t)
                 idx+=1
 
+    def genome_build_model(self, genome_list):
+        idx = 0
+        self.genome_type=[]
+        self.genome_idx_type=[]
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                n, c, h, w = mod.weight.shape
+                if h==1 or w ==1:
+                    continue
+
+                t = genome_list[idx]
+                mod.weight = torch.nn.Parameter(self.group_mod_list[idx][t].weight)
+                mod.groups = self.group_mod_list[idx][t].groups
+                self.genome_type.append(mod.groups)
+                self.genome_idx_type.append(t)
+                idx+=1
+
     def random_model(self):
         idx = 0
         self.genome_type=[]
@@ -100,23 +119,11 @@ class SuperNet:
                 self.genome_idx_type.append(t)
                 idx+=1
 
-    def print_choice(self):
-        print(self.group_mod_list)
+    def print_genome(self):
+        print(self.genome_type)
 
     def print_model(self):
         print(self.model)
-    
-    def print_num_choice(self):
-        num_layer=0
-        layer_sum=0
-        total=0
-        for sublist in self.group_mod_list:
-            layer_sum=0
-            for item in sublist:
-                layer_sum+=1
-            total+=layer_sum
-            num_layer+=1
-        print("number of layer:", num_layer, "total choice:", total)
 
     def train(self):
         criterion = nn.CrossEntropyLoss()
@@ -153,7 +160,6 @@ class SuperNet:
 
         for inputs, labels in self.trainloader:
             self.random_model()
-            #self.show_genome_type()
             self.model.cuda()
 
             inputs = inputs.cuda()
