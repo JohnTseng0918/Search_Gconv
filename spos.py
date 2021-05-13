@@ -58,15 +58,19 @@ class SuperNet:
                     print("idx:", idx)
                     print(choice)
                     self.validate()
-                    self.train()
+                    self.train(optim.Adam(mod.parameters()))
                     self.validate()
                     mod.requires_grad_(False)
                     choice.weight = torch.nn.Parameter(mod.weight)
 
                 mod.weight = torch.nn.Parameter(self.group_mod_list[idx][0].weight)
                 mod.groups = 1
+                mod.requires_grad_(False)
 
-                idx+=1        
+                idx+=1
+        
+        for name, mod in self.model.named_modules():
+            mod.requires_grad_(True)
 
     def self_define_model(self):
         idx = 0
@@ -125,9 +129,7 @@ class SuperNet:
     def print_model(self):
         print(self.model)
 
-    def train(self):
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(self.model.parameters())
+    def train(self, optimizer, criterion = nn.CrossEntropyLoss()):
         utils.train(self.trainloader, self.model, optimizer, criterion, self.epoch)
 
     def validate(self):
