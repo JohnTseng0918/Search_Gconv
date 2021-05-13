@@ -1,0 +1,1 @@
+python main.py --train_batch_size 500 --validate_batch_size 500 --epoch 1

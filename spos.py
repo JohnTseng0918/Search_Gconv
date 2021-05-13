@@ -53,8 +53,9 @@ class SuperNet:
                         continue
                     mod.weight = torch.nn.Parameter(choice.weight)
                     mod.groups = choice.groups
+                    print("idx:", idx)
                     print(choice)
-                    print(choice.weight.shape)
+                    #print(choice.weight.shape)
                     self.validate()
                     self.train()
                     self.validate()
@@ -129,6 +130,54 @@ class SuperNet:
         print("top1 acc:", acc1)
         print("top5 acc:", acc5)    
         print("avg loss:", loss)
+        print("-------------------------------------------------")
+
+    def update_random_model_weight(self):
+        idx = 0
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                n, c, h, w = mod.weight.shape
+                if h==1 or w ==1:
+                    continue
+                t = self.genome_idx_type[idx]
+                self.group_mod_list[idx][t].weight = torch.nn.Parameter(mod.weight)
+                idx+=1
+
+    def train_supernet(self):
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(self.model.parameters())
+
+        losses = utils.AverageMeter()
+        top1 = utils.AverageMeter()
+        top5 = utils.AverageMeter()
+
+        for inputs, labels in self.trainloader:
+            self.random_model()
+            #self.show_genome_type()
+            self.model.cuda()
+
+            inputs = inputs.cuda()
+            labels = labels.cuda()
+
+            optimizer.zero_grad()
+            outputs = self.model(inputs)
+
+            loss = criterion(outputs, labels)
+            loss.backward()
+
+            optimizer.step()
+            self.update_random_model_weight()
+
+            prec1, prec5 = utils.accuracy(outputs, labels, topk=(1, 5))
+            n = inputs.size(0)
+            losses.update(loss.item(), n)
+            top1.update(prec1.item(), n)
+            top5.update(prec5.item(), n)
+
+        print("train:")
+        print("top1 acc:", top1.avg)
+        print("top5 acc:", top5.avg)
+        print("avg loss:", losses.avg)
         print("-------------------------------------------------")
 
     def get_dataloader(self):
