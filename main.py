@@ -15,21 +15,26 @@ def get_args():
 
 def main():
     args = get_args()
-    
+
     nas = SuperNet(args)
     nas.load_model()
     nas.get_dataloader()
     nas.build_oneshot()
-    nas.warnup_oneshot()
+    nas.pretrained_to_oneshot()
 
-    for i in range(50):
-        print("epoch", i+1)
-        nas.train_supernet()
+    for i in range(100):
+        print("number:", i+1)
+        nas.random_model_train_validate()
 
-    for j in range(20):
-        print("random model:", j+1)
+    for i in range(15):
+        print("number:", i+1)
         nas.random_model()
         nas.print_genome()
+        nas.count_flops_params()
+        nas.validate()
+        for j in range(3):
+            print("epoch:", j+1)
+            nas.train_one_epoch()
         nas.validate()
 
 

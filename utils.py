@@ -32,10 +32,6 @@ def accuracy(output, target, topk=(1,)):
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
 
-def evaluation(outputs, labels):
-    correct = torch.sum(torch.eq(torch.argmax(outputs, dim=1), labels)).item()
-    return correct
-
 def validate(validate_loader, model, criterion):
     model.cuda()
     model.eval()
@@ -52,8 +48,6 @@ def validate(validate_loader, model, criterion):
         outputs = model(inputs)
 
         loss = criterion(outputs, labels)
-
-        correct = evaluation(outputs, labels)
 
         prec1, prec5 = accuracy(outputs, labels, topk=(1, 5))
         n = inputs.size(0)
