@@ -4,8 +4,8 @@ import torch.optim as optim
 import torchvision
 import utils
 import random
-from models.resnet import *
 from thop import profile
+from pytorchcv.model_provider import get_model as ptcv_get_model
 
 class SuperNet:
     def __init__(self, args):
@@ -17,7 +17,7 @@ class SuperNet:
         self.genome_idx_type=[]
 
     def load_model(self):
-        self.model = cifar_resnet20(pretrained=True)
+        self.model = ptcv_get_model("resnet164bn_cifar100", pretrained=True)
 
     def build_oneshot(self):
         self.group_mod_list = nn.ModuleList()
@@ -86,7 +86,7 @@ class SuperNet:
         #self.lock_model()
         #self.partial_lock_model()
         self.train_one_epoch()
-        self.validate()
+        #self.validate()
 
     def show_lock_status(self):
         for name, param in self.model.named_parameters():
@@ -116,6 +116,8 @@ class SuperNet:
         macs, params = profile(self.model, inputs=(input, ))
         print("MACs:", macs)
         print("params:", params)
+        del input
+        self.model.cpu()
 
 
     def print_genome(self):
