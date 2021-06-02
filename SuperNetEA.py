@@ -28,6 +28,10 @@ class SuperNetEA:
                 if h==1 or w ==1:
                     continue
                 g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
+                ## delete----
+                if len(g_list)>=3:
+                    g_list=g_list[:2]
+                ## delete----
                 sub_mod_list = nn.ModuleList()
                 for g in g_list:
                     new_mod = nn.Conv2d(mod.in_channels, mod.out_channels, mod.kernel_size, padding = mod.padding, bias = mod.bias, groups = g)
@@ -102,6 +106,15 @@ class SuperNetEA:
 
     def print_genome(self):
         print(self.genome_type)
+
+    def train_one_epoch(self):
+        optimizer = optim.Adam(self.model.parameters())
+        utils.train_one_epoch(self.trainloader, self.model, optimizer, nn.CrossEntropyLoss())
+
+    def fine_tune(self):
+        optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.001, nesterov=True)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
+        utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), 100)
 
     def validate(self):
         criterion = nn.CrossEntropyLoss()
