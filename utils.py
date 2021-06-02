@@ -85,7 +85,7 @@ def train_one_epoch(train_loader, model, optimizer, criterion):
 
     return top1.avg, top5.avg, losses.avg
 
-def train(train_loader, model, optimizer, criterion, epoch):
+def train(train_loader, model, optimizer, scheduler, criterion, epoch):
     for e in range(epoch):
         acc1, acc5, loss = train_one_epoch(train_loader, model, optimizer, criterion)
         print("epoch", e+1, ":")
@@ -93,6 +93,7 @@ def train(train_loader, model, optimizer, criterion, epoch):
         print("top5 acc:", acc5)
         print("avg loss:", loss)
         print("-------------------------------------------------")
+        scheduler.step()
 
 class AverageMeter(object):
     """Computes and stores the average and current value
