@@ -13,7 +13,6 @@ class SuperNetEA:
         self.arch = args.arch
         self.train_batch_size = args.train_batch_size
         self.validate_batch_size = args.validate_batch_size
-        self.epoch = args.epoch
         self.genome_type=[]
         self.genome_idx_type=[]
 
@@ -28,15 +27,62 @@ class SuperNetEA:
                 if h==1 or w ==1:
                     continue
                 g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
-                ## delete----
-                if len(g_list)>=3:
-                    g_list=g_list[:2]
-                ## delete----
                 sub_mod_list = nn.ModuleList()
                 for g in g_list:
                     new_mod = nn.Conv2d(mod.in_channels, mod.out_channels, mod.kernel_size, padding = mod.padding, bias = mod.bias, groups = g)
                     sub_mod_list.append(new_mod)
                 self.group_mod_list.append(sub_mod_list)
+
+    def init_supernet(self):
+        self.get_all_group_choice_supernet()
+        self.group_mod_list = nn.ModuleList()
+        idx=0
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                n, c, h, w = mod.weight.shape
+                if h==1 or w ==1:
+                    continue
+                sub_mod_list = nn.ModuleList()
+                new_mod = nn.Conv2d(mod.in_channels, mod.out_channels, mod.kernel_size, padding = mod.padding, bias = mod.bias, groups = mod.groups)
+                sub_mod_list.append(new_mod)
+                self.group_mod_list.append(sub_mod_list)
+                self.not_been_built_list[idx].remove(new_mod.groups)
+                idx+=1
+
+    def get_all_group_choice_supernet(self):
+        self.not_been_built_list = []
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                n, c, h, w = mod.weight.shape
+                if h==1 or w ==1:
+                    continue
+                g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
+                self.not_been_built_list.append(g_list)
+
+    def grow_supernet(self):
+        idx=0
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                n, c, h, w = mod.weight.shape
+                if h==1 or w ==1:
+                    continue
+                if len(self.not_been_built_list[idx])!=0:
+                    g = self.not_been_built_list[idx][0]
+                    new_mod = nn.Conv2d(mod.in_channels, mod.out_channels, mod.kernel_size, padding = mod.padding, bias = mod.bias, groups = g)
+                    self.group_mod_list[idx].append(new_mod)
+                    self.not_been_built_list[idx].remove(g)
+                idx+=1
+
+    def update_random_model_weight(self):
+        idx = 0
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                n, c, h, w = mod.weight.shape
+                if h==1 or w ==1:
+                    continue
+                t = self.genome_idx_type[idx]
+                self.group_mod_list[idx][t].weight = torch.nn.Parameter(mod.weight)
+                idx+=1
 
     def pretrained_to_supernet(self):
         idx = 0
@@ -67,11 +113,19 @@ class SuperNetEA:
                 self.genome_idx_type.append(t)
                 idx+=1
 
-    def random_model_train_validate(self):
+    def random_model_train(self):
         self.random_model()
         self.print_genome()
         self.train_one_epoch()
-        self.validate()
+        self.update_random_model_weight()
+
+    def random_model_train_lock(self):
+        self.random_model()
+        self.print_genome()
+        self.partial_lock_model()
+        self.train_one_epoch()
+        self.unlock_model()
+        self.update_random_model_weight()
 
 
     def random_model(self):
@@ -107,14 +161,33 @@ class SuperNetEA:
     def print_genome(self):
         print(self.genome_type)
 
+    def partial_lock_model(self):
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                n, c, h, w = mod.weight.shape
+                if h==1 or w ==1:
+                    continue
+                if mod.groups==1:
+                    mod.requires_grad_(False)
+
+    def unlock_model(self):
+        for name, mod in self.model.named_modules():
+            mod.requires_grad_(True)
+
+
     def train_one_epoch(self):
         optimizer = optim.Adam(self.model.parameters())
-        utils.train_one_epoch(self.trainloader, self.model, optimizer, nn.CrossEntropyLoss())
+        acc1, acc5, loss = utils.train_one_epoch(self.trainloader, self.model, optimizer, nn.CrossEntropyLoss())
+        print("train:")
+        print("top1 acc:", acc1)
+        print("top5 acc:", acc5)
+        print("avg loss:", loss)
+        print("-------------------------------------------------")
 
     def fine_tune(self):
-        optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.001, nesterov=True)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
-        utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), 100)
+        optimizer = optim.SGD(self.model.parameters(), lr=0.05, momentum=0.9, weight_decay=0.001, nesterov=True)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=150)
+        utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), 150)
 
     def validate(self):
         criterion = nn.CrossEntropyLoss()
@@ -155,3 +228,21 @@ class SuperNetEA:
 
         self.trainloader = torch.utils.data.DataLoader(self.train_set, batch_size=self.train_batch_size,shuffle=True)
         self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.validate_batch_size,shuffle=False)
+
+
+    def train_n_iteration(self, n=50):
+        optimizer = optim.Adam(self.model.parameters())
+        criterion = nn.CrossEntropyLoss()
+        self.model.cuda()
+        self.model.train()
+
+        for i, (inputs, labels) in enumerate(self.trainloader):
+            inputs = inputs.cuda()
+            labels = labels.cuda()
+            optimizer.zero_grad()
+            outputs = self.model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            if i==n-1:
+                break

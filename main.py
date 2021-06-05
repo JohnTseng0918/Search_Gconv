@@ -8,7 +8,9 @@ def get_args():
     parser.add_argument("--arch", default = "resnet164bn_cifar100", type=str)
     parser.add_argument("--train_batch_size", default = 128, help="train batch size", type=int)
     parser.add_argument("--validate_batch_size", default = 128, help="validate batch size", type=int)
-    parser.add_argument("--epoch", default = 10, help="number of epoch", type=int)
+    parser.add_argument("--warmup_epoch", default = 50, help="number of warmup epoch", type=int)
+    parser.add_argument("--FLOPs", default= None, help="FLOPs constraint", type=int)
+    parser.add_argument("--params", default= None, help="Numbers of parameters constraint", type=int)
     args = parser.parse_args()
     return args
 
@@ -19,14 +21,14 @@ def main():
     nas = SuperNetEA(args)
     nas.load_model()
     nas.get_dataloader()
-    nas.build_supernet()
+    nas.init_supernet()
     nas.pretrained_to_supernet()
 
-    for i in range(100):
+    for i in range(args.warmup_epoch):
         print("number:", i+1)
-        nas.random_model_train_validate()
+        nas.random_model_train()
 
-    for i in range(15):
+    for i in range(5):
         print("number:", i+1)
         nas.random_model()
         nas.print_genome()
