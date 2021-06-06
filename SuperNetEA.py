@@ -230,6 +230,45 @@ class SuperNetEA:
         self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.validate_batch_size,shuffle=False)
 
 
+    def train_supernet(self, epoch):
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.SGD(self.model.parameters(),lr=0.1,weight_decay=0.0001,momentum=0.9)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epoch)
+        losses = utils.AverageMeter()
+        top1 = utils.AverageMeter()
+        top5 = utils.AverageMeter()
+        for e in range(epoch):
+            for inputs, labels in self.trainloader:
+                self.random_model()
+                self.model.train()
+                self.model.cuda()
+
+                inputs = inputs.cuda()
+                labels = labels.cuda()
+
+                optimizer.zero_grad()
+                outputs = self.model(inputs)
+
+                loss = criterion(outputs, labels)
+                loss.backward()
+
+                optimizer.step()
+                self.update_random_model_weight()
+
+                prec1, prec5 = utils.accuracy(outputs, labels, topk=(1, 5))
+                n = inputs.size(0)
+                losses.update(loss.item(), n)
+                top1.update(prec1.item(), n)
+                top5.update(prec5.item(), n)
+            
+            print("epoch:", e+1, "train supernet:")
+            print("top1 acc:", top1.avg)
+            print("top5 acc:", top5.avg)
+            print("avg loss:", losses.avg)
+            print("-------------------------------------------------")
+            scheduler.step()
+
+
     def train_n_iteration(self, n=50):
         optimizer = optim.Adam(self.model.parameters())
         criterion = nn.CrossEntropyLoss()
