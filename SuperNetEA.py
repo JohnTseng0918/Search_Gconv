@@ -1,3 +1,4 @@
+from pytorchcv.models.fastscnn import FastPyramidPooling
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -15,6 +16,10 @@ class SuperNetEA:
         self.validate_batch_size = args.validate_batch_size
         self.genome_type=[]
         self.genome_idx_type=[]
+        self.FLOPs = args.FLOPs
+        self.params = args.params
+        self.population = args.population
+        self.search_epoch = args.search_epoch
 
     def load_model(self):
         self.model = ptcv_get_model(self.arch, pretrained=True)
@@ -127,7 +132,6 @@ class SuperNetEA:
         self.unlock_model()
         self.update_random_model_weight()
 
-
     def random_model(self):
         idx = 0
         self.genome_type=[]
@@ -143,6 +147,34 @@ class SuperNetEA:
                 self.genome_type.append(mod.groups)
                 self.genome_idx_type.append(t)
                 idx+=1
+
+    def search(self):
+        # init EA get random population (with constrain)
+        modellist = []
+        count=0
+        while count < self.population:
+            self.random_model()
+            isvalid = self.check_constrain()
+            if isvalid == True:
+                count+=1
+                modellist.append(self.genome_idx_type)
+        
+        for i in range(self.search_epoch):
+            #mutation
+            #crossover
+            #check FLOPs and params
+            #inference acc
+            #kill some population
+            pass
+        
+
+    def check_constrain(self):
+        macs, params = self.count_flops_params()
+        if self.params != None and self.params <= params:
+            return False
+        if self.FLOPs != None and self.FLOPs <= macs:
+            return False
+        return True
 
     def count_flops_params(self):
         if self.dataset == "cifar10" or self.dataset =="cifar100":
@@ -160,6 +192,9 @@ class SuperNetEA:
 
     def print_genome(self):
         print(self.genome_type)
+
+    def print_idx_genome(self):
+        print(self.genome_idx_type)
 
     def partial_lock_model(self):
         for name, mod in self.model.named_modules():

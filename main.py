@@ -11,6 +11,8 @@ def get_args():
     parser.add_argument("--warmup_epoch", default = 50, help="number of warmup epoch", type=int)
     parser.add_argument("--FLOPs", default= None, help="FLOPs constraint", type=int)
     parser.add_argument("--params", default= None, help="Numbers of parameters constraint", type=int)
+    parser.add_argument("--population", default= 10, help="Numbers of EA population", type=int)
+    parser.add_argument("--search_epoch", default= 10, help="Numbers of EA search epoch", type=int)
     args = parser.parse_args()
     return args
 
