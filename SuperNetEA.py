@@ -150,23 +150,76 @@ class SuperNetEA:
 
     def search(self):
         # init EA get random population (with constrain)
-        modellist = []
+        populist = []
+        topk = []
         count=0
         while count < self.population:
             self.random_model()
             isvalid = self.check_constrain()
             if isvalid == True:
                 count+=1
-                modellist.append(self.genome_idx_type)
+                populist.append(self.genome_idx_type)
         
+        n = int(len(populist) / 2)
+        m = int(len(populist) / 2)
+        prob = 0.1
+        print("populist:",populist)
         for i in range(self.search_epoch):
-            #mutation
+            #inference
+            for p in populist:
+                self.genome_build_model(p)
+                self.train_n_iteration(50)
+                acc1, _, _ = self.validate()
+                topk.append((p,acc1))
+            
+            #update topk
+            topk.sort(key=lambda s:s[1], reverse=True)
+            if len(topk) >= 10:
+                topk = topk[:10]
+            print("topk:",topk)
+
             #crossover
-            #check FLOPs and params
-            #inference acc
-            #kill some population
-            pass
+            crossover_child = []
+            max_iter = n * 10
+            while max_iter > 0 and len(crossover_child) < n:
+                max_iter-=1
+                s1, s2 = random.sample(topk, 2)
+                p1, _ = s1
+                p2, _ = s2
+                child = [random.choice([i,j]) for i,j in zip(p1,p2)]
+                self.genome_build_model(child)
+                if self.check_constrain():
+                    crossover_child.append(child)
+            
+
+            #mutation
+            mutation_child = []
+            max_iter = m * 10
+            while max_iter > 0 and len(mutation_child) < m:
+                max_iter-=1
+                s1 = random.choice(topk)
+                p1, _ = s1
+                for i in range(len(p1)):
+                    if random.random() < prob:
+                        p1[i] = random.randint(0,len(self.group_mod_list[i])-1)
+                self.genome_build_model(p1)
+                if self.check_constrain():
+                    mutation_child.append(p1)
+            
+
+            #union
+            populist = []
+            populist = crossover_child + mutation_child
+            n = int(len(populist) / 2)
+            m = int(len(populist) / 2)
         
+        self.topk = topk
+    
+    def select_from_topk(self):
+        m, _ = self.topk[0]
+        return m
+
+
 
     def check_constrain(self):
         macs, params = self.count_flops_params()
@@ -232,6 +285,7 @@ class SuperNetEA:
         print("top5 acc:", acc5)    
         print("avg loss:", loss)
         print("-------------------------------------------------")
+        return acc1, acc5, loss
 
     def get_dataloader(self):
         if self.dataset == "cifar10":
