@@ -6,7 +6,7 @@ import torchvision
 import utils
 import random
 from pytorchcv.model_provider import get_model as ptcv_get_model
-from thop import profile
+from ptflops import get_model_complexity_info
 
 class SuperNetEA:
     def __init__(self, args):
@@ -162,13 +162,12 @@ class SuperNetEA:
         
         n = int(len(populist) / 2)
         m = int(len(populist) / 2)
-        prob = 0.1
-        print("populist:",populist)
+        prob = 0.25
         for i in range(self.search_epoch):
             #inference
             for p in populist:
                 self.genome_build_model(p)
-                self.train_n_iteration(50)
+                self.train_n_iteration(100)
                 acc1, _, _ = self.validate()
                 topk.append((p,acc1))
             
@@ -230,17 +229,16 @@ class SuperNetEA:
         return True
 
     def count_flops_params(self):
+        self.model.cpu()
         if self.dataset == "cifar10" or self.dataset =="cifar100":
-            inputs = torch.randn(1, 3, 32, 32)
+            macs, params = get_model_complexity_info(self.model, (3, 32, 32), as_strings=False,
+                                           print_per_layer_stat=False, verbose=False)
         else:
-            inputs = torch.randn(1, 3, 224, 224)
-        input = inputs.cuda()
-        self.model.cuda()
-        macs, params = profile(self.model, inputs=(input, ))
+            macs, params = get_model_complexity_info(self.model, (3, 224, 224), as_strings=False,
+                                           print_per_layer_stat=False, verbose=False)
+
         print("MACs:", macs)
         print("params:", params)
-        del input
-        self.model.cpu()
         return macs, params
 
     def print_genome(self):
@@ -272,10 +270,10 @@ class SuperNetEA:
         print("avg loss:", loss)
         print("-------------------------------------------------")
 
-    def fine_tune(self):
-        optimizer = optim.SGD(self.model.parameters(), lr=0.05, momentum=0.9, weight_decay=0.001, nesterov=True)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=150)
-        utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), 150)
+    def fine_tune(self, lr=0.05, ftepoch=100, momentum=0.9):
+        optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum, weight_decay=0.001, nesterov=True)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=ftepoch)
+        utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), ftepoch)
 
     def validate(self):
         criterion = nn.CrossEntropyLoss()
@@ -374,3 +372,13 @@ class SuperNetEA:
             optimizer.step()
             if i==n-1:
                 break
+
+    def train_from_scratch(self):
+        for name, mod in self.model.named_parameters():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                nn.init.xavier_uniform(mod.weight)
+            elif isinstance(mod, torch.nn.Linear):
+                nn.init.xavier_uniform(mod.weight)
+        optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.001, nesterov=True)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
+        utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), 100)
