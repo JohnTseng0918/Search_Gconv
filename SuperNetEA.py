@@ -218,8 +218,6 @@ class SuperNetEA:
         m, _ = self.topk[0]
         return m
 
-
-
     def check_constrain(self):
         macs, params = self.count_flops_params()
         if self.params != None and self.params <= params:
@@ -263,7 +261,7 @@ class SuperNetEA:
 
     def train_one_epoch(self):
         optimizer = optim.Adam(self.model.parameters())
-        acc1, acc5, loss = utils.train_one_epoch(self.trainloader, self.model, optimizer, nn.CrossEntropyLoss())
+        acc1, acc5, loss = utils.train_one_epoch(self.trainloader_part, self.model, optimizer, nn.CrossEntropyLoss())
         print("train:")
         print("top1 acc:", acc1)
         print("top5 acc:", acc5)
@@ -277,8 +275,18 @@ class SuperNetEA:
 
     def validate(self):
         criterion = nn.CrossEntropyLoss()
-        acc1, acc5, loss = utils.validate(self.testloader, self.model, criterion)
+        acc1, acc5, loss = utils.validate(self.validateloader, self.model, criterion)
         print("validate:")
+        print("top1 acc:", acc1)
+        print("top5 acc:", acc5)    
+        print("avg loss:", loss)
+        print("-------------------------------------------------")
+        return acc1, acc5, loss
+
+    def test(self):
+        criterion = nn.CrossEntropyLoss()
+        acc1, acc5, loss = utils.validate(self.testloader, self.model, criterion)
+        print("test:")
         print("top1 acc:", acc1)
         print("top5 acc:", acc5)    
         print("avg loss:", loss)
@@ -298,6 +306,7 @@ class SuperNetEA:
             ])
             self.train_set = torchvision.datasets.CIFAR10(root='./data/cifar10',train=True,transform=train_transforms,download=True)
             self.test_set = torchvision.datasets.CIFAR10(root='./data/cifar10',train=False,transform=test_transforms,download=True)
+            self.train_set_part, self.validation_set = torch.utils.data.random_split(self.train_set, [45000, 5000])
         elif self.dataset == "cifar100":
             train_transforms = torchvision.transforms.Compose([
                 torchvision.transforms.RandomHorizontalFlip(),
@@ -310,10 +319,14 @@ class SuperNetEA:
             ])
             self.train_set = torchvision.datasets.CIFAR100(root='./data/cifar100',train=True,transform=train_transforms,download=True)
             self.test_set = torchvision.datasets.CIFAR100(root='./data/cifar100',train=False,transform=test_transforms,download=True)
+            self.train_set_part, self.validation_set = torch.utils.data.random_split(self.train_set, [45000, 5000])
+
         elif self.dataset == "imagenet":
             pass
 
         self.trainloader = torch.utils.data.DataLoader(self.train_set, batch_size=self.train_batch_size,shuffle=True)
+        self.trainloader_part = torch.utils.data.DataLoader(self.train_set_part, batch_size=self.train_batch_size,shuffle=True)
+        self.validateloader = torch.utils.data.DataLoader(self.validation_set, batch_size=self.validate_batch_size,shuffle=False)
         self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.validate_batch_size,shuffle=False)
 
 
@@ -325,7 +338,7 @@ class SuperNetEA:
         top1 = utils.AverageMeter()
         top5 = utils.AverageMeter()
         for e in range(epoch):
-            for inputs, labels in self.trainloader:
+            for inputs, labels in self.trainloader_part:
                 self.random_model()
                 self.model.train()
                 self.model.cuda()
@@ -362,7 +375,7 @@ class SuperNetEA:
         self.model.cuda()
         self.model.train()
 
-        for i, (inputs, labels) in enumerate(self.trainloader):
+        for i, (inputs, labels) in enumerate(self.trainloader_part):
             inputs = inputs.cuda()
             labels = labels.cuda()
             optimizer.zero_grad()
