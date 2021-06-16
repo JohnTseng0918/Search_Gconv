@@ -6,7 +6,7 @@ import torchvision
 import utils
 import random
 from pytorchcv.model_provider import get_model as ptcv_get_model
-from ptflops import get_model_complexity_info
+from thop import profile
 
 class SuperNetEA:
     def __init__(self, args):
@@ -229,11 +229,10 @@ class SuperNetEA:
     def count_flops_params(self):
         self.model.cpu()
         if self.dataset == "cifar10" or self.dataset =="cifar100":
-            macs, params = get_model_complexity_info(self.model, (3, 32, 32), as_strings=False,
-                                           print_per_layer_stat=False, verbose=False)
+            inputs = torch.randn(1, 3, 32, 32)
         else:
-            macs, params = get_model_complexity_info(self.model, (3, 224, 224), as_strings=False,
-                                           print_per_layer_stat=False, verbose=False)
+            inputs = torch.randn(1, 3, 224, 224)
+        macs, params = profile(self.model, inputs = (inputs,), verbose=False)
 
         print("MACs:", macs)
         print("params:", params)
@@ -268,7 +267,7 @@ class SuperNetEA:
         print("avg loss:", loss)
         print("-------------------------------------------------")
 
-    def fine_tune(self, lr=0.05, ftepoch=100, momentum=0.9):
+    def fine_tune(self, lr=0.1, ftepoch=100, momentum=0.9):
         optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum, weight_decay=0.001, nesterov=True)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=ftepoch)
         utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), ftepoch)
