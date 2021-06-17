@@ -63,6 +63,12 @@ class SuperNetEA:
                     continue
                 g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
                 self.not_been_built_list.append(g_list)
+    
+    def check_grow_fully(self):
+        for i in self.not_been_built_list:
+            if len(i)!=0:
+                return False
+        return True
 
     def grow_supernet(self):
         idx=0
@@ -148,10 +154,10 @@ class SuperNetEA:
                 self.genome_idx_type.append(t)
                 idx+=1
 
-    def search(self):
+    def search(self, isTrain=True, n_iter=100):
         # init EA get random population (with constrain)
         populist = []
-        topk = []
+        self.topk = []
         count=0
         while count < self.population:
             self.random_model()
@@ -167,22 +173,24 @@ class SuperNetEA:
             #inference
             for p in populist:
                 self.genome_build_model(p)
-                self.train_n_iteration(100)
+                if isTrain==True:
+                    self.train_n_iteration(n_iter)
+                self.print_genome()
                 acc1, _, _ = self.validate()
-                topk.append((p,acc1))
+                self.topk.append((p,acc1))
             
             #update topk
-            topk.sort(key=lambda s:s[1], reverse=True)
-            if len(topk) >= 10:
-                topk = topk[:10]
-            print("topk:",topk)
+            self.topk.sort(key=lambda s:s[1], reverse=True)
+            if len(self.topk) >= 10:
+                self.topk = self.topk[:10]
+            print("topk:",self.topk)
 
             #crossover
             crossover_child = []
             max_iter = n * 10
             while max_iter > 0 and len(crossover_child) < n:
                 max_iter-=1
-                s1, s2 = random.sample(topk, 2)
+                s1, s2 = random.sample(self.topk, 2)
                 p1, _ = s1
                 p2, _ = s2
                 child = [random.choice([i,j]) for i,j in zip(p1,p2)]
@@ -196,14 +204,17 @@ class SuperNetEA:
             max_iter = m * 10
             while max_iter > 0 and len(mutation_child) < m:
                 max_iter-=1
-                s1 = random.choice(topk)
+                s1 = random.choice(self.topk)
                 p1, _ = s1
+                p2 = []
                 for i in range(len(p1)):
                     if random.random() < prob:
-                        p1[i] = random.randint(0,len(self.group_mod_list[i])-1)
-                self.genome_build_model(p1)
+                        p2.append(random.randint(0,len(self.group_mod_list[i])-1))
+                    else:
+                        p2.append(p1[i])
+                self.genome_build_model(p2)
                 if self.check_constrain():
-                    mutation_child.append(p1)
+                    mutation_child.append(p2)
             
 
             #union
@@ -212,10 +223,10 @@ class SuperNetEA:
             n = int(len(populist) / 2)
             m = int(len(populist) / 2)
         
-        self.topk = topk
+        print(self.topk)
     
-    def select_from_topk(self):
-        m, _ = self.topk[0]
+    def select_from_topk(self, k=0):
+        m, _ = self.topk[k]
         return m
 
     def check_constrain(self):
@@ -234,8 +245,8 @@ class SuperNetEA:
             inputs = torch.randn(1, 3, 224, 224)
         macs, params = profile(self.model, inputs = (inputs,), verbose=False)
 
-        print("MACs:", macs)
-        print("params:", params)
+        #print("MACs:", macs)
+        #print("params:", params)
         return macs, params
 
     def print_genome(self):
@@ -339,6 +350,8 @@ class SuperNetEA:
         for e in range(epoch):
             for inputs, labels in self.trainloader_part:
                 self.random_model()
+                while self.check_constrain() != True:
+                    self.random_model()
                 self.model.train()
                 self.model.cuda()
 
