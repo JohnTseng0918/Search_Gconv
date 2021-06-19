@@ -1,6 +1,85 @@
 import torch
 from functools import reduce
 import random
+import numpy as np
+
+def get_criterion(W):
+    """ Compute the magnitude-based criterion on W.
+
+        Returns:
+            A 2d torch.Tensor of (F, C)
+    """
+    assert isinstance(W, torch.Tensor)
+    assert W.dim() == 4
+
+    kernel_dims = (2, 3)
+    C = torch.norm(W, dim=kernel_dims)
+
+    return C
+
+def group_sort(C, G, num_iters=1, min_g=0):
+    """ Sort the criterion matrix by the last group of
+    rows and columns.
+
+    The whole recursion works like this:
+    --> sort by the last group of columns and rows, collect
+        their permutation.
+    --> pass the sorted C[:C.shape[0]-g_out, :C.shape[1]-g_in]
+        (= C') into the next step.
+    --> the returned result will be a sorted C', the
+        permutation of this submatrix's indices
+    --> update the matrix and indices to be returned
+
+  Args:
+  """
+    assert isinstance(C, np.ndarray)
+
+    c_out, c_in = C.shape
+    g_out, g_in = c_out // G, c_in // G
+
+    gnd_in, gnd_out = np.arange(c_in), np.arange(c_out)
+
+    for g in reversed(range(G)):
+        if g < min_g:
+            break
+
+        # heuristic method
+        for _ in range(num_iters):
+
+            # first sort the columns by the sum of the last row group
+            r_lo, r_hi = g_out * g, g_out * (g + 1)
+            c_lo, c_hi = g_in * g, g_in * (g + 1)
+
+            # get the current sorting result
+            # C will be updated every time
+            C_ = C[gnd_out, :][:, gnd_in]
+
+            # crop the matrix
+            C_ = C_[:r_hi, :c_hi]
+            # print(C_)
+
+            # rows and cols for sorting
+            rows = C_[r_lo:, :]
+            perm_cols = np.argsort(rows.sum(axis=0))
+
+            cols = C_[:, perm_cols][:, c_lo:]
+            perm_rows = np.argsort(cols.sum(axis=1))
+
+            # print(rows, rows.sum(axis=0))
+            # print(cols, cols.sum(axis=1))
+            # print(perm_rows, perm_cols)
+
+            # update gnd_in and gnd_out
+            gnd_in[:c_hi] = gnd_in[:c_hi][perm_cols]
+            gnd_out[:r_hi] = gnd_out[:r_hi][perm_rows]
+
+    return gnd_in, gnd_out
+
+def get_permute_weight(w, G, num_iters):
+    c = get_criterion(w)
+    c /= torch.norm(c)
+    gnd_in, gnd_out = group_sort(c.numpy(), G, num_iters)
+    return w[gnd_out, :][:, gnd_in]
 
 def factors(n):
     """

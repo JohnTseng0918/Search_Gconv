@@ -107,6 +107,10 @@ class SuperNetEA:
                         choice.weight = torch.nn.Parameter(mod.weight)
                 idx+=1
 
+    def permute_model(self):
+        pass
+        
+
     def genome_build_model(self, genome_list):
         idx = 0
         self.genome_type=[]
@@ -168,7 +172,7 @@ class SuperNetEA:
         
         n = int(len(populist) / 2)
         m = int(len(populist) / 2)
-        prob = 0.25
+        prob = 0.1
         for i in range(self.search_epoch):
             #inference
             for p in populist:
@@ -279,7 +283,10 @@ class SuperNetEA:
         print("-------------------------------------------------")
 
     def fine_tune(self, lr=0.1, ftepoch=100, momentum=0.9):
-        optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum, weight_decay=0.001, nesterov=True)
+        isnesterov=True
+        if momentum==0:
+            isnesterov=False
+        optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum, weight_decay=0.001, nesterov=isnesterov)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=ftepoch)
         utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), ftepoch)
 
@@ -350,8 +357,6 @@ class SuperNetEA:
         for e in range(epoch):
             for inputs, labels in self.trainloader_part:
                 self.random_model()
-                while self.check_constrain() != True:
-                    self.random_model()
                 self.model.train()
                 self.model.cuda()
 
