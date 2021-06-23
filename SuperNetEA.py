@@ -84,6 +84,21 @@ class SuperNetEA:
                     self.not_been_built_list[idx].remove(g)
                 idx+=1
 
+    def gconv_weight(W, g):
+        n, c = W.shape[:2]
+        inptr=0
+        outptr=0
+        tl=[]
+        for i in range(g):
+            tl.append(W[outptr:outptr+int(n/g),inptr:inptr+int(c/g)])
+            outptr+=int(n/g)
+            inptr+=int(c/g)
+
+        wg = tl[0]
+        for i in range(1, len(tl)):
+            wg = torch.cat((wg,tl[i]),0)
+        return wg
+
     def update_random_model_weight(self):
         idx = 0
         for name, mod in self.model.named_modules():
@@ -108,8 +123,34 @@ class SuperNetEA:
                 idx+=1
 
     def permute_model(self):
-        pass
-        
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                n, c, h, w = mod.weight.shape
+                if h==1 or w ==1:
+                    continue
+                g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
+                if len(g_list) > 1:
+                    w = mod.weight.detach()
+                    w = utils.get_permute_weight(w, g_list[1], 5)
+                    mod.weight = torch.nn.Parameter(w)
+                    self.train_one_epoch()
+                    self.model.cpu()
+
+    def permute_model_lock(self):
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                n, c, h, w = mod.weight.shape
+                if h==1 or w ==1:
+                    continue
+                g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
+                if len(g_list) > 1:
+                    w = mod.weight.detach()
+                    w = utils.get_permute_weight(w, g_list[1], 5)
+                    mod.weight = torch.nn.Parameter(w)
+                    mod.requires_grad_(False)
+                    self.train_one_epoch()
+                    self.model.cpu()
+
 
     def genome_build_model(self, genome_list):
         idx = 0
