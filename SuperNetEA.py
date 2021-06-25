@@ -11,6 +11,12 @@ from thop import profile
 class SuperNetEA:
     def __init__(self, args):
         self.dataset = args.dataset
+        if self.dataset == "cifar100":
+            self.num_class=100
+        elif self.dataset == "cifar10":
+            self.num_class=10
+        elif self.dataset == "imagenet":
+            self.num_class=1000
         self.arch = args.arch
         self.train_batch_size = args.train_batch_size
         self.validate_batch_size = args.validate_batch_size
@@ -20,6 +26,7 @@ class SuperNetEA:
         self.params = args.params
         self.population = args.population
         self.search_epoch = args.search_epoch
+        self.criterion = utils.CrossEntropyLabelSmooth(self.num_class, 0.1)
 
     def load_model(self):
         self.model = ptcv_get_model(self.arch, pretrained=True)
@@ -267,8 +274,6 @@ class SuperNetEA:
             populist = crossover_child + mutation_child
             n = int(len(populist) / 2)
             m = int(len(populist) / 2)
-        
-        print(self.topk)
     
     def select_from_topk(self, k=0):
         m, _ = self.topk[k]
@@ -323,7 +328,7 @@ class SuperNetEA:
         print("avg loss:", loss)
         print("-------------------------------------------------")
 
-    def fine_tune(self, lr=0.1, ftepoch=100, momentum=0.9):
+    def fine_tune(self, lr=0.005, ftepoch=100, momentum=0.9):
         isnesterov=True
         if momentum==0:
             isnesterov=False
@@ -332,8 +337,7 @@ class SuperNetEA:
         utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), ftepoch)
 
     def validate(self):
-        criterion = nn.CrossEntropyLoss()
-        acc1, acc5, loss = utils.validate(self.validateloader, self.model, criterion)
+        acc1, acc5, loss = utils.validate(self.validateloader, self.model, self.criterion)
         print("validate:")
         print("top1 acc:", acc1)
         print("top5 acc:", acc5)    
@@ -342,8 +346,7 @@ class SuperNetEA:
         return acc1, acc5, loss
 
     def test(self):
-        criterion = nn.CrossEntropyLoss()
-        acc1, acc5, loss = utils.validate(self.testloader, self.model, criterion)
+        acc1, acc5, loss = utils.validate(self.testloader, self.model, self.criterion)
         print("test:")
         print("top1 acc:", acc1)
         print("top5 acc:", acc5)    
@@ -388,9 +391,8 @@ class SuperNetEA:
         self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.validate_batch_size,shuffle=False)
 
 
-    def train_supernet(self, epoch):
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.SGD(self.model.parameters(),lr=0.1,weight_decay=0.0001,momentum=0.9)
+    def train_supernet(self, epoch, lr=0.1, step=True):
+        optimizer = optim.SGD(self.model.parameters(),lr=lr,weight_decay=0.0001,momentum=0.9)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epoch)
         losses = utils.AverageMeter()
         top1 = utils.AverageMeter()
@@ -407,7 +409,7 @@ class SuperNetEA:
                 optimizer.zero_grad()
                 outputs = self.model(inputs)
 
-                loss = criterion(outputs, labels)
+                loss = self.criterion(outputs, labels)
                 loss.backward()
 
                 optimizer.step()
@@ -424,12 +426,12 @@ class SuperNetEA:
             print("top5 acc:", top5.avg)
             print("avg loss:", losses.avg)
             print("-------------------------------------------------")
-            scheduler.step()
+            if step==True:
+                scheduler.step()
 
 
     def train_n_iteration(self, n=50):
         optimizer = optim.Adam(self.model.parameters())
-        criterion = nn.CrossEntropyLoss()
         self.model.cuda()
         self.model.train()
 
@@ -438,7 +440,7 @@ class SuperNetEA:
             labels = labels.cuda()
             optimizer.zero_grad()
             outputs = self.model(inputs)
-            loss = criterion(outputs, labels)
+            loss = self.criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             if i==n-1:
@@ -452,4 +454,4 @@ class SuperNetEA:
                 nn.init.xavier_uniform(mod.weight)
         optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.001, nesterov=True)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
-        utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), 100)
+        utils.train(self.trainloader, self.model, optimizer, scheduler, self.criterion, 100)

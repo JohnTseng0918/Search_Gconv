@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from functools import reduce
 import random
 import numpy as np
@@ -173,6 +174,23 @@ def train(train_loader, model, optimizer, scheduler, criterion, epoch):
         print("avg loss:", loss)
         print("-------------------------------------------------")
         scheduler.step()
+
+class CrossEntropyLabelSmooth(nn.Module):
+
+    def __init__(self, num_classes, epsilon):
+        super(CrossEntropyLabelSmooth, self).__init__()
+        self.num_classes = num_classes
+        self.epsilon = epsilon
+        self.logsoftmax = nn.LogSoftmax(dim=1)
+
+    def forward(self, inputs, targets):
+        log_probs = self.logsoftmax(inputs)
+        targets = torch.zeros_like(log_probs).scatter_(
+            1, targets.unsqueeze(1), 1)
+        targets = (1 - self.epsilon) * \
+            targets + self.epsilon / self.num_classes
+        loss = (-targets * log_probs).mean(0).sum()
+        return loss
 
 class AverageMeter(object):
     """Computes and stores the average and current value
