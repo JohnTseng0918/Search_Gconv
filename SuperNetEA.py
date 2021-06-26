@@ -139,6 +139,7 @@ class SuperNetEA:
                     continue
                 g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
                 if len(g_list) > 1:
+                    self.model.cpu()
                     w = mod.weight.detach()
                     w = utils.get_permute_weight(w, g_list[1], 1)
                     w = utils.get_permute_weight(w, g_list[2], 1)
