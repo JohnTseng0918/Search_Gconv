@@ -57,6 +57,7 @@ class SuperNetEA:
                 sub_mod_list = nn.ModuleList()
                 new_mod = nn.Conv2d(mod.in_channels, mod.out_channels, mod.kernel_size, padding = mod.padding, bias = mod.bias, groups = mod.groups)
                 sub_mod_list.append(new_mod)
+                nn.init.xavier_uniform_(new_mod.weight)
                 self.group_mod_list.append(sub_mod_list)
                 self.not_been_built_list[idx].remove(new_mod.groups)
                 idx+=1
@@ -87,6 +88,7 @@ class SuperNetEA:
                 if len(self.not_been_built_list[idx])!=0:
                     g = self.not_been_built_list[idx][0]
                     new_mod = nn.Conv2d(mod.in_channels, mod.out_channels, mod.kernel_size, padding = mod.padding, bias = mod.bias, groups = g)
+                    nn.init.xavier_uniform_(new_mod.weight)
                     self.group_mod_list[idx].append(new_mod)
                     self.not_been_built_list[idx].remove(g)
                 idx+=1
@@ -138,7 +140,8 @@ class SuperNetEA:
                 g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
                 if len(g_list) > 1:
                     w = mod.weight.detach()
-                    w = utils.get_permute_weight(w, g_list[1], 5)
+                    w = utils.get_permute_weight(w, g_list[1], 1)
+                    w = utils.get_permute_weight(w, g_list[2], 1)
                     mod.weight = torch.nn.Parameter(w)
                     self.train_one_epoch()
                     self.model.cpu()
@@ -206,7 +209,7 @@ class SuperNetEA:
                 self.genome_idx_type.append(t)
                 idx+=1
 
-    def search(self, isTrain=True, n_iter=100):
+    def search(self):
         # init EA get random population (with constrain)
         populist = []
         self.topk = []
@@ -225,8 +228,6 @@ class SuperNetEA:
             #inference
             for p in populist:
                 self.genome_build_model(p)
-                if isTrain==True:
-                    self.train_n_iteration(n_iter)
                 self.print_genome()
                 acc1, _, _ = self.validate()
                 self.topk.append((p,acc1))
@@ -321,20 +322,29 @@ class SuperNetEA:
 
     def train_one_epoch(self):
         optimizer = optim.Adam(self.model.parameters())
-        acc1, acc5, loss = utils.train_one_epoch(self.trainloader_part, self.model, optimizer, nn.CrossEntropyLoss())
+        acc1, acc5, loss = utils.train_one_epoch(self.trainloader_part, self.model, optimizer, self.criterion)
         print("train:")
         print("top1 acc:", acc1)
         print("top5 acc:", acc5)
         print("avg loss:", loss)
         print("-------------------------------------------------")
 
-    def fine_tune(self, lr=0.005, ftepoch=100, momentum=0.9):
+    def fine_tune(self, lr=0.005, ftepoch=100, momentum=0.9, testepoch=100):
         isnesterov=True
         if momentum==0:
             isnesterov=False
         optimizer = optim.SGD(self.model.parameters(), lr=lr, momentum=momentum, weight_decay=0.001, nesterov=isnesterov)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=ftepoch)
-        utils.train(self.trainloader, self.model, optimizer, scheduler, nn.CrossEntropyLoss(), ftepoch)
+        for e in range(ftepoch):
+            acc1, acc5, loss = utils.train_one_epoch(self.trainloader, self.model, optimizer, self.criterion)
+            print("epoch", e+1, ":")
+            print("top1 acc:", acc1)
+            print("top5 acc:", acc5)
+            print("avg loss:", loss)
+            print("-------------------------------------------------")
+            scheduler.step()
+            if e+1 >= testepoch:
+                self.test()
 
     def validate(self):
         acc1, acc5, loss = utils.validate(self.validateloader, self.model, self.criterion)
@@ -428,30 +438,3 @@ class SuperNetEA:
             print("-------------------------------------------------")
             if step==True:
                 scheduler.step()
-
-
-    def train_n_iteration(self, n=50):
-        optimizer = optim.Adam(self.model.parameters())
-        self.model.cuda()
-        self.model.train()
-
-        for i, (inputs, labels) in enumerate(self.trainloader_part):
-            inputs = inputs.cuda()
-            labels = labels.cuda()
-            optimizer.zero_grad()
-            outputs = self.model(inputs)
-            loss = self.criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            if i==n-1:
-                break
-
-    def train_from_scratch(self):
-        for name, mod in self.model.named_parameters():
-            if isinstance(mod, torch.nn.modules.conv.Conv2d):
-                nn.init.xavier_uniform(mod.weight)
-            elif isinstance(mod, torch.nn.Linear):
-                nn.init.xavier_uniform(mod.weight)
-        optimizer = optim.SGD(self.model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.001, nesterov=True)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
-        utils.train(self.trainloader, self.model, optimizer, scheduler, self.criterion, 100)
