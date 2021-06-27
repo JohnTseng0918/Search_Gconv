@@ -79,7 +79,7 @@ def group_sort(C, G, num_iters=1, min_g=0):
 def get_permute_weight(w, G, num_iters):
     c = get_criterion(w)
     c /= torch.norm(c)
-    gnd_in, gnd_out = group_sort(c.numpy(), G, num_iters)
+    gnd_in, gnd_out = group_sort(c.cpu().numpy(), G, num_iters)
     return w[gnd_out, :][:, gnd_in]
 
 def factors(n):

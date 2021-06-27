@@ -26,7 +26,9 @@ class SuperNetEA:
         self.params = args.params
         self.population = args.population
         self.search_epoch = args.search_epoch
-        self.criterion = utils.CrossEntropyLabelSmooth(self.num_class, 0.1)
+        self.topk_num = args.topk_num
+        #self.criterion = utils.CrossEntropyLabelSmooth(self.num_class, 0.1)
+        self.criterion = nn.CrossEntropyLoss()
 
     def load_model(self):
         self.model = ptcv_get_model(self.arch, pretrained=True)
@@ -145,6 +147,7 @@ class SuperNetEA:
                     w = utils.get_permute_weight(w, g_list[2], 1)
                     mod.weight = torch.nn.Parameter(w)
                     self.train_one_epoch()
+                    self.train_one_epoch()
                     self.model.cpu()
 
     def permute_model_lock(self):
@@ -155,8 +158,10 @@ class SuperNetEA:
                     continue
                 g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
                 if len(g_list) > 1:
+                    self.model.cpu()
                     w = mod.weight.detach()
-                    w = utils.get_permute_weight(w, g_list[1], 5)
+                    w = utils.get_permute_weight(w, g_list[1], 1)
+                    w = utils.get_permute_weight(w, g_list[2], 1)
                     mod.weight = torch.nn.Parameter(w)
                     mod.requires_grad_(False)
                     self.train_one_epoch()
@@ -235,8 +240,8 @@ class SuperNetEA:
             
             #update topk
             self.topk.sort(key=lambda s:s[1], reverse=True)
-            if len(self.topk) >= 10:
-                self.topk = self.topk[:10]
+            if len(self.topk) >= self.topk_num:
+                self.topk = self.topk[:self.topk_num]
             print("topk:",self.topk)
 
             #crossover
