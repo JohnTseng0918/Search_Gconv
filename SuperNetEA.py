@@ -421,10 +421,10 @@ class SuperNetEA:
     def train_supernet(self, epoch, lr=0.1, step=True):
         optimizer = optim.SGD(self.model.parameters(),lr=lr,weight_decay=0.0001,momentum=0.9)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epoch)
-        losses = utils.AverageMeter()
-        top1 = utils.AverageMeter()
-        top5 = utils.AverageMeter()
         for e in range(epoch):
+            losses = utils.AverageMeter()
+            top1 = utils.AverageMeter()
+            top5 = utils.AverageMeter()
             for inputs, labels in self.trainloader:
                 self.random_model()
                 self.model.train()
