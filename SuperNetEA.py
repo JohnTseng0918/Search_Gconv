@@ -4,7 +4,9 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision
 import utils
+import time
 import random
+from data_loader import get_train_valid_loader, get_test_loader
 from pytorchcv.model_provider import get_model as ptcv_get_model
 from thop import profile
 
@@ -131,6 +133,31 @@ class SuperNetEA:
                 for choice in self.group_mod_list[idx]:
                     if choice.groups == mod.groups:
                         choice.weight = torch.nn.Parameter(mod.weight)
+                idx+=1
+    
+    def pretrained_to_all_supernet(self):
+        idx = 0
+        for name, mod in self.model.named_modules():
+            if isinstance(mod, torch.nn.modules.conv.Conv2d):
+                n, c, h, w = mod.weight.shape
+                if h==1 or w ==1:
+                    continue
+                for choice in self.group_mod_list[idx]:
+                    if choice.groups == mod.groups:
+                        choice.weight = torch.nn.Parameter(mod.weight)
+                    else:
+                        g = choice.groups
+                        W = mod.weight
+                        outc_start, intc_start = 0, 0
+                        outc_interval = int(n/g)
+                        intc_interval = int(c/g)
+                        tensorlist=[]
+                        for i in range(g):
+                            tensorlist.append(W[outc_start:outc_start+outc_interval, intc_start:intc_start+intc_interval,:,:])
+                            outc_start+=outc_interval
+                            intc_start+=intc_interval
+                        wnew = torch.cat(tuple(tensorlist),0)
+                        choice.weight = torch.nn.Parameter(wnew)
                 idx+=1
 
     def permute_model(self):
@@ -305,6 +332,23 @@ class SuperNetEA:
         #print("MACs:", macs)
         #print("params:", params)
         return macs, params
+    
+    def measure_latency(self):
+        self.model.cpu()
+        inputs = torch.randn(16, 3, 32, 32)
+        self.model.eval()
+        latlist=[]
+        for i in range(50):
+            torch.cuda.synchronize()
+            start = time.time()
+            self.model(inputs)
+            torch.cuda.synchronize()
+            end = time.time()
+            latlist.append(end-start)
+        avg_time = sum(latlist[20:])/len(latlist[20:])
+        print(avg_time)
+        self.model.cuda()
+        return avg_time
 
     def print_genome(self):
         print(self.genome_type)
@@ -328,7 +372,7 @@ class SuperNetEA:
 
     def train_one_epoch(self):
         optimizer = optim.Adam(self.model.parameters())
-        acc1, acc5, loss = utils.train_one_epoch(self.trainloader_part, self.model, optimizer, self.criterion)
+        acc1, acc5, loss = utils.train_one_epoch(self.trainloader, self.model, optimizer, self.criterion)
         print("train:")
         print("top1 acc:", acc1)
         print("top5 acc:", acc5)
@@ -371,41 +415,8 @@ class SuperNetEA:
         return acc1, acc5, loss
 
     def get_dataloader(self):
-        if self.dataset == "cifar10":
-            train_transforms = torchvision.transforms.Compose([
-                torchvision.transforms.RandomHorizontalFlip(),
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
-            ])
-            test_transforms = torchvision.transforms.Compose([
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
-            ])
-            self.train_set = torchvision.datasets.CIFAR10(root='./data/cifar10',train=True,transform=train_transforms,download=True)
-            self.test_set = torchvision.datasets.CIFAR10(root='./data/cifar10',train=False,transform=test_transforms,download=True)
-            self.train_set_part, self.validation_set = torch.utils.data.random_split(self.train_set, [45000, 5000])
-        elif self.dataset == "cifar100":
-            train_transforms = torchvision.transforms.Compose([
-                torchvision.transforms.RandomHorizontalFlip(),
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize((0.5071, 0.4865, 0.4409), (0.2673, 0.2564, 0.2762))
-            ])
-            test_transforms = torchvision.transforms.Compose([
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize((0.5071, 0.4865, 0.4409), (0.2673, 0.2564, 0.2762))
-            ])
-            self.train_set = torchvision.datasets.CIFAR100(root='./data/cifar100',train=True,transform=train_transforms,download=True)
-            self.test_set = torchvision.datasets.CIFAR100(root='./data/cifar100',train=False,transform=test_transforms,download=True)
-            self.train_set_part, self.validation_set = torch.utils.data.random_split(self.train_set, [45000, 5000])
-
-        elif self.dataset == "imagenet":
-            pass
-
-        self.trainloader = torch.utils.data.DataLoader(self.train_set, batch_size=self.train_batch_size,shuffle=True)
-        self.trainloader_part = torch.utils.data.DataLoader(self.train_set_part, batch_size=self.train_batch_size,shuffle=True)
-        self.validateloader = torch.utils.data.DataLoader(self.validation_set, batch_size=self.validate_batch_size,shuffle=False)
-        self.testloader = torch.utils.data.DataLoader(self.test_set, batch_size=self.validate_batch_size,shuffle=False)
-
+        self.trainloader, self.validateloader = get_train_valid_loader("./data/cifar100", self.train_batch_size, augment=True, random_seed=87)
+        self.testloader = get_test_loader("./data/cifar100", self.validate_batch_size, shuffle=False)
 
     def train_supernet(self, epoch, lr=0.1, step=True):
         optimizer = optim.SGD(self.model.parameters(),lr=lr,weight_decay=0.0001,momentum=0.9)
@@ -414,7 +425,7 @@ class SuperNetEA:
         top1 = utils.AverageMeter()
         top5 = utils.AverageMeter()
         for e in range(epoch):
-            for inputs, labels in self.trainloader_part:
+            for inputs, labels in self.trainloader:
                 self.random_model()
                 self.model.train()
                 self.model.cuda()
