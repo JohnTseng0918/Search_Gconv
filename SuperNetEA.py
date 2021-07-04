@@ -160,7 +160,7 @@ class SuperNetEA:
                         choice.weight = torch.nn.Parameter(wnew)
                 idx+=1
 
-    def permute_model(self):
+    def permute_model(self, n_sort=10):
         for name, mod in self.model.named_modules():
             if isinstance(mod, torch.nn.modules.conv.Conv2d):
                 n, c, h, w = mod.weight.shape
@@ -170,14 +170,12 @@ class SuperNetEA:
                 if len(g_list) > 1:
                     self.model.cpu()
                     w = mod.weight.detach()
-                    w = utils.get_permute_weight(w, g_list[1], 1)
-                    w = utils.get_permute_weight(w, g_list[2], 1)
+                    w = utils.get_permute_weight(w, g_list[1], n_sort)
                     mod.weight = torch.nn.Parameter(w)
-                    self.train_one_epoch()
                     self.train_one_epoch()
                     self.model.cpu()
 
-    def permute_model_lock(self):
+    def permute_model_lock(self, n_sort=10):
         for name, mod in self.model.named_modules():
             if isinstance(mod, torch.nn.modules.conv.Conv2d):
                 n, c, h, w = mod.weight.shape
@@ -187,8 +185,7 @@ class SuperNetEA:
                 if len(g_list) > 1:
                     self.model.cpu()
                     w = mod.weight.detach()
-                    w = utils.get_permute_weight(w, g_list[1], 1)
-                    w = utils.get_permute_weight(w, g_list[2], 1)
+                    w = utils.get_permute_weight(w, g_list[1], n_sort)
                     mod.weight = torch.nn.Parameter(w)
                     mod.requires_grad_(False)
                     self.train_one_epoch()
@@ -252,7 +249,7 @@ class SuperNetEA:
             isvalid = self.check_constrain()
             if isvalid == True:
                 count+=1
-                populist.append(self.genome_idx_type)
+                populist.append(tuple(self.genome_idx_type))
         
         n = int(len(populist) / 2)
         m = int(len(populist) / 2)
@@ -266,6 +263,7 @@ class SuperNetEA:
                 self.topk.append((p,acc1))
             
             #update topk
+            self.topk = list(set(self.topk))
             self.topk.sort(key=lambda s:s[1], reverse=True)
             if len(self.topk) >= self.topk_num:
                 self.topk = self.topk[:self.topk_num]
@@ -282,7 +280,7 @@ class SuperNetEA:
                 child = [random.choice([i,j]) for i,j in zip(p1,p2)]
                 self.genome_build_model(child)
                 if self.check_constrain():
-                    crossover_child.append(child)
+                    crossover_child.append(tuple(child))
             
 
             #mutation
@@ -300,7 +298,7 @@ class SuperNetEA:
                         p2.append(p1[i])
                 self.genome_build_model(p2)
                 if self.check_constrain():
-                    mutation_child.append(p2)
+                    mutation_child.append(tuple(p2))
             
 
             #union
@@ -455,3 +453,45 @@ class SuperNetEA:
             print("-------------------------------------------------")
             if step==True:
                 scheduler.step()
+
+    def warmup_supernet(self, epoch, lr=0.1, n=10):
+        optimizer = optim.SGD(self.model.parameters(),lr=lr,weight_decay=0.0001,momentum=0.9)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epoch, eta_min=0.1*lr)
+        count=0
+        for e in range(epoch):
+            losses = utils.AverageMeter()
+            top1 = utils.AverageMeter()
+            top5 = utils.AverageMeter()
+            for inputs, labels in self.trainloader:
+                if count==0:
+                    self.random_model()
+                    self.model.train()
+                    self.model.cuda()
+                    count=n-1
+                else:
+                    count-=1
+
+                inputs = inputs.cuda()
+                labels = labels.cuda()
+
+                optimizer.zero_grad()
+                outputs = self.model(inputs)
+
+                loss = self.criterion(outputs, labels)
+                loss.backward()
+
+                optimizer.step()
+                self.update_random_model_weight()
+
+                prec1, prec5 = utils.accuracy(outputs, labels, topk=(1, 5))
+                n = inputs.size(0)
+                losses.update(loss.item(), n)
+                top1.update(prec1.item(), n)
+                top5.update(prec5.item(), n)
+            
+            print("epoch:", e+1, "warm up supernet:")
+            print("top1 acc:", top1.avg)
+            print("top5 acc:", top5.avg)
+            print("avg loss:", losses.avg)
+            print("-------------------------------------------------")
+            scheduler.step()
