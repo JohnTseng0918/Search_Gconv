@@ -24,19 +24,15 @@ def main():
     nas.load_model()
     nas.get_dataloader()
     nas.init_supernet()
-    nas.pretrained_to_supernet()
     nas.grow_supernet()
+    nas.grow_supernet()
+    nas.pretrained_to_all_supernet()
 
-    for i in range(args.warmup_epoch):
-        print("number:", i+1)
-        nas.random_model_train_lock()
-
-    nas.train_supernet(50)
+    nas.train_supernet(100)
     nas.search()
     nas.genome_build_model(nas.select_from_topk())
     nas.print_genome()
-    _, _ = nas.count_flops_params()
-    nas.fine_tune()
+    nas.fine_tune(lr=0.001, ftepoch=50, testepoch=1)
 
 if __name__ == "__main__":
     main()

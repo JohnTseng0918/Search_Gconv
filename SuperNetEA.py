@@ -97,21 +97,6 @@ class SuperNetEA:
                     self.not_been_built_list[idx].remove(g)
                 idx+=1
 
-    def gconv_weight(W, g):
-        n, c = W.shape[:2]
-        inptr=0
-        outptr=0
-        tl=[]
-        for i in range(g):
-            tl.append(W[outptr:outptr+int(n/g),inptr:inptr+int(c/g)])
-            outptr+=int(n/g)
-            inptr+=int(c/g)
-
-        wg = tl[0]
-        for i in range(1, len(tl)):
-            wg = torch.cat((wg,tl[i]),0)
-        return wg
-
     def update_random_model_weight(self):
         idx = 0
         for name, mod in self.model.named_modules():
@@ -175,23 +160,6 @@ class SuperNetEA:
                     self.train_one_epoch()
                     self.model.cpu()
 
-    def permute_model_lock(self, n_sort=10):
-        for name, mod in self.model.named_modules():
-            if isinstance(mod, torch.nn.modules.conv.Conv2d):
-                n, c, h, w = mod.weight.shape
-                if h==1 or w ==1:
-                    continue
-                g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
-                if len(g_list) > 1:
-                    self.model.cpu()
-                    w = mod.weight.detach()
-                    w = utils.get_permute_weight(w, g_list[1], n_sort)
-                    mod.weight = torch.nn.Parameter(w)
-                    mod.requires_grad_(False)
-                    self.train_one_epoch()
-                    self.model.cpu()
-
-
     def genome_build_model(self, genome_list):
         idx = 0
         self.genome_type=[]
@@ -208,20 +176,6 @@ class SuperNetEA:
                 self.genome_type.append(mod.groups)
                 self.genome_idx_type.append(t)
                 idx+=1
-
-    def random_model_train(self):
-        self.random_model()
-        self.print_genome()
-        self.train_one_epoch()
-        self.update_random_model_weight()
-
-    def random_model_train_lock(self):
-        self.random_model()
-        self.print_genome()
-        self.partial_lock_model()
-        self.train_one_epoch()
-        self.unlock_model()
-        self.update_random_model_weight()
 
     def random_model(self):
         idx = 0
@@ -326,9 +280,6 @@ class SuperNetEA:
         else:
             inputs = torch.randn(1, 3, 224, 224)
         macs, params = profile(self.model, inputs = (inputs,), verbose=False)
-
-        #print("MACs:", macs)
-        #print("params:", params)
         return macs, params
     
     def measure_latency(self):
@@ -354,19 +305,9 @@ class SuperNetEA:
     def print_idx_genome(self):
         print(self.genome_idx_type)
 
-    def partial_lock_model(self):
-        for name, mod in self.model.named_modules():
-            if isinstance(mod, torch.nn.modules.conv.Conv2d):
-                n, c, h, w = mod.weight.shape
-                if h==1 or w ==1:
-                    continue
-                if mod.groups==1:
-                    mod.requires_grad_(False)
-
     def unlock_model(self):
         for name, mod in self.model.named_modules():
             mod.requires_grad_(True)
-
 
     def train_one_epoch(self):
         optimizer = optim.Adam(self.model.parameters())
@@ -416,82 +357,57 @@ class SuperNetEA:
         self.trainloader, self.validateloader = get_train_valid_loader("./data/cifar100", self.train_batch_size, augment=True, random_seed=87)
         self.testloader = get_test_loader("./data/cifar100", self.validate_batch_size, shuffle=False)
 
-    def train_supernet(self, epoch, lr=0.1, step=True):
-        optimizer = optim.SGD(self.model.parameters(),lr=lr,weight_decay=0.0001,momentum=0.9)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epoch)
+    def random_model_valid(self, timeout=10):
+        for i in range(timeout):
+            self.random_model()
+            _, params = self.count_flops_params()
+            if params >= self.params*0.9 and params <= self.params*1.1:
+                return
+        self.random_model()
+        
+    def train_supernet(self, epoch, lr=0.1):
+        dynamic_lr = lr
         for e in range(epoch):
-            losses = utils.AverageMeter()
-            top1 = utils.AverageMeter()
-            top5 = utils.AverageMeter()
-            for inputs, labels in self.trainloader:
-                self.random_model()
-                self.model.train()
-                self.model.cuda()
-
-                inputs = inputs.cuda()
-                labels = labels.cuda()
-
-                optimizer.zero_grad()
-                outputs = self.model(inputs)
-
-                loss = self.criterion(outputs, labels)
-                loss.backward()
-
-                optimizer.step()
-                self.update_random_model_weight()
-
-                prec1, prec5 = utils.accuracy(outputs, labels, topk=(1, 5))
-                n = inputs.size(0)
-                losses.update(loss.item(), n)
-                top1.update(prec1.item(), n)
-                top5.update(prec5.item(), n)
-            
+            if e % 10==0 and e!=0:
+                dynamic_lr=dynamic_lr*0.5
             print("epoch:", e+1, "train supernet:")
-            print("top1 acc:", top1.avg)
-            print("top5 acc:", top5.avg)
-            print("avg loss:", losses.avg)
-            print("-------------------------------------------------")
-            if step==True:
-                scheduler.step()
+            if e <= epoch*0.9:
+                self.train_supernet_one_epoch(valid=False, lr=dynamic_lr)
+            else:
+                self.train_supernet_one_epoch(valid=True, lr=dynamic_lr)
 
-    def warmup_supernet(self, epoch, lr=0.1, n=10):
-        optimizer = optim.SGD(self.model.parameters(),lr=lr,weight_decay=0.0001,momentum=0.9)
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epoch, eta_min=0.1*lr)
-        count=0
-        for e in range(epoch):
-            losses = utils.AverageMeter()
-            top1 = utils.AverageMeter()
-            top5 = utils.AverageMeter()
-            for inputs, labels in self.trainloader:
-                if count==0:
-                    self.random_model()
-                    self.model.train()
-                    self.model.cuda()
-                    count=n-1
-                else:
-                    count-=1
+    def train_supernet_one_epoch(self, valid=False, lr=0.001):
+        losses = utils.AverageMeter()
+        top1 = utils.AverageMeter()
+        top5 = utils.AverageMeter()
+        for inputs, labels in self.trainloader:
+            if valid==True:
+                self.random_model_valid()
+            else:
+                self.random_model()
+            self.model.train()
+            self.model.cuda()
+            optimizer = optim.SGD(self.model.parameters(),lr=lr,weight_decay=0.0001)
 
-                inputs = inputs.cuda()
-                labels = labels.cuda()
+            inputs = inputs.cuda()
+            labels = labels.cuda()
 
-                optimizer.zero_grad()
-                outputs = self.model(inputs)
+            optimizer.zero_grad()
+            outputs = self.model(inputs)
 
-                loss = self.criterion(outputs, labels)
-                loss.backward()
+            loss = self.criterion(outputs, labels)
+            loss.backward()
 
-                optimizer.step()
-                self.update_random_model_weight()
+            optimizer.step()
+            self.update_random_model_weight()
 
-                prec1, prec5 = utils.accuracy(outputs, labels, topk=(1, 5))
-                n = inputs.size(0)
-                losses.update(loss.item(), n)
-                top1.update(prec1.item(), n)
-                top5.update(prec5.item(), n)
+            prec1, prec5 = utils.accuracy(outputs, labels, topk=(1, 5))
+            n = inputs.size(0)
+            losses.update(loss.item(), n)
+            top1.update(prec1.item(), n)
+            top5.update(prec5.item(), n)
             
-            print("epoch:", e+1, "warm up supernet:")
-            print("top1 acc:", top1.avg)
-            print("top5 acc:", top5.avg)
-            print("avg loss:", losses.avg)
-            print("-------------------------------------------------")
-            scheduler.step()
+        print("top1 acc:", top1.avg)
+        print("top5 acc:", top5.avg)
+        print("avg loss:", losses.avg)
+        print("-------------------------------------------------")
