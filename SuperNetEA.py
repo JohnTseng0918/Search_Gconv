@@ -1,4 +1,3 @@
-from pytorchcv.models.fastscnn import FastPyramidPooling
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -29,8 +28,8 @@ class SuperNetEA:
         self.population = args.population
         self.search_epoch = args.search_epoch
         self.topk_num = args.topk_num
-        #self.criterion = utils.CrossEntropyLabelSmooth(self.num_class, 0.1)
         self.criterion = nn.CrossEntropyLoss()
+        self.num_workers = args.num_workers
 
     def load_model(self):
         self.model = ptcv_get_model(self.arch, pretrained=True)
@@ -107,18 +106,6 @@ class SuperNetEA:
                 t = self.genome_idx_type[idx]
                 self.group_mod_list[idx][t].weight = torch.nn.Parameter(mod.weight)
                 idx+=1
-
-    def pretrained_to_supernet(self):
-        idx = 0
-        for name, mod in self.model.named_modules():
-            if isinstance(mod, torch.nn.modules.conv.Conv2d):
-                n, c, h, w = mod.weight.shape
-                if h==1 or w ==1:
-                    continue
-                for choice in self.group_mod_list[idx]:
-                    if choice.groups == mod.groups:
-                        choice.weight = torch.nn.Parameter(mod.weight)
-                idx+=1
     
     def pretrained_to_all_supernet(self):
         idx = 0
@@ -145,7 +132,8 @@ class SuperNetEA:
                         choice.weight = torch.nn.Parameter(wnew)
                 idx+=1
 
-    def permute_model(self, n_sort=10):
+    def permute(self, n_sort=10):
+        self.model.cpu()
         for name, mod in self.model.named_modules():
             if isinstance(mod, torch.nn.modules.conv.Conv2d):
                 n, c, h, w = mod.weight.shape
@@ -153,12 +141,9 @@ class SuperNetEA:
                     continue
                 g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
                 if len(g_list) > 1:
-                    self.model.cpu()
                     w = mod.weight.detach()
                     w = utils.get_permute_weight(w, g_list[1], n_sort)
                     mod.weight = torch.nn.Parameter(w)
-                    self.train_one_epoch()
-                    self.model.cpu()
 
     def genome_build_model(self, genome_list):
         idx = 0
@@ -354,9 +339,16 @@ class SuperNetEA:
         return acc1, acc5, loss
 
     def get_dataloader(self):
-        self.trainloader, self.validateloader = get_train_valid_loader("./data/cifar100", self.train_batch_size, augment=True, random_seed=87)
-        self.testloader = get_test_loader("./data/cifar100", self.validate_batch_size, shuffle=False)
-
+        if self.dataset=="cifar100":
+            self.trainloader, self.validateloader = get_train_valid_loader("./data/cifar100", self.train_batch_size, augment=True, random_seed=87, data=self.dataset)
+            self.testloader = get_test_loader("./data/cifar100", self.validate_batch_size, shuffle=False, data=self.dataset)
+        elif self.dataset=="cifar10":
+            self.trainloader, self.validateloader = get_train_valid_loader("./data/cifar10", self.train_batch_size, augment=True, random_seed=87, data=self.dataset)
+            self.testloader = get_test_loader("./data/cifar10", self.validate_batch_size, shuffle=False, data=self.dataset)
+        elif self.dataset=="imagenet":
+            self.trainloader, self.validateloader = get_train_valid_loader("./data/imagenet/train", self.train_batch_size, augment=True, random_seed=87, data=self.dataset)
+            self.testloader = get_test_loader("./data/imagenet/val", self.validate_batch_size, shuffle=False, data=self.dataset)
+    
     def random_model_valid(self, timeout=10):
         for i in range(timeout):
             self.random_model()

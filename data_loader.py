@@ -12,7 +12,6 @@ from torchvision import datasets
 from torchvision import transforms
 from torch.utils.data.sampler import SubsetRandomSampler
 
-
 def get_train_valid_loader(data_dir,
                            batch_size,
                            augment,
@@ -20,7 +19,8 @@ def get_train_valid_loader(data_dir,
                            valid_size=0.1,
                            shuffle=True,
                            num_workers=4,
-                           pin_memory=False):
+                           pin_memory=False,
+                           data="cifar100"):
     """
     Utility function for loading and returning train and valid
     multi-process iterators over the CIFAR-10 dataset. A sample
@@ -56,7 +56,12 @@ def get_train_valid_loader(data_dir,
         std=[0.2023, 0.1994, 0.2010],
     )
 
-    # define transforms
+    imagenet_normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
+
+    # define cifar10/100 transforms
     valid_transform = transforms.Compose([
             transforms.ToTensor(),
             normalize,
@@ -66,25 +71,57 @@ def get_train_valid_loader(data_dir,
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            normalize,
-            transforms.RandomErasing()
+            normalize#,
+            #transforms.RandomErasing()
         ])
     else:
         train_transform = transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])
+    
+    # imagenet data transform
+    imagenet_valid_transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        imagenet_normalize
+    ])
+    imagenet_train_transform = transforms.Compose([
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        imagenet_normalize
+    ])
 
     # load the dataset
-    train_dataset = datasets.CIFAR100(
-        root=data_dir, train=True,
-        download=True, transform=train_transform,
-    )
+    if data =="cifar100":
+        train_dataset = datasets.CIFAR100(
+            root=data_dir, train=True,
+            download=True, transform=train_transform,
+        )
 
-    valid_dataset = datasets.CIFAR100(
-        root=data_dir, train=True,
-        download=True, transform=valid_transform,
-    )
+        valid_dataset = datasets.CIFAR100(
+            root=data_dir, train=True,
+            download=True, transform=valid_transform,
+        )
+    elif data=="cifar10":
+        train_dataset = datasets.CIFAR10(
+            root=data_dir, train=True,
+            download=True, transform=train_transform,
+        )
+
+        valid_dataset = datasets.CIFAR10(
+            root=data_dir, train=True,
+            download=True, transform=valid_transform,
+        )
+    elif data=="imagenet":
+        train_dataset = datasets.ImageFolder(
+            root=data_dir, transform=imagenet_train_transform
+        )
+        valid_dataset = datasets.ImageFolder(
+            root=data_dir, transform=imagenet_valid_transform
+        )
 
     num_train = len(train_dataset)
     indices = list(range(num_train))
@@ -115,7 +152,8 @@ def get_test_loader(data_dir,
                     batch_size,
                     shuffle=True,
                     num_workers=4,
-                    pin_memory=False):
+                    pin_memory=False,
+                    data="cifar100"):
     """
     Utility function for loading and returning a multi-process
     test iterator over the CIFAR-10 dataset.
@@ -140,16 +178,38 @@ def get_test_loader(data_dir,
         std=[0.229, 0.224, 0.225],
     )
 
+    imagenet_normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
+
     # define transform
     transform = transforms.Compose([
         transforms.ToTensor(),
         normalize,
     ])
 
-    dataset = datasets.CIFAR100(
-        root=data_dir, train=False,
-        download=True, transform=transform,
-    )
+    imagenet_transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        imagenet_normalize
+    ])
+
+    if data=="cifar100":
+        dataset = datasets.CIFAR100(
+            root=data_dir, train=False,
+            download=True, transform=transform,
+        )
+    elif data=="cifar10":
+        dataset = datasets.CIFAR10(
+            root=data_dir, train=False,
+            download=True, transform=transform,
+        )
+    elif data=="imagenet":
+        dataset = datasets.ImageFolder(
+            root=data_dir, transform=imagenet_transform
+        )
 
     data_loader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle,
