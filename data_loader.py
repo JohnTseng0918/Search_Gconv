@@ -126,12 +126,15 @@ def get_train_valid_loader(data_dir,
     num_train = len(train_dataset)
     indices = list(range(num_train))
     split = int(np.floor(valid_size * num_train))
+    if data=="imagenet":
+        split=50000
 
     if shuffle:
         np.random.seed(random_seed)
         np.random.shuffle(indices)
 
     train_idx, valid_idx = indices[split:], indices[:split]
+    print(len(train_idx),len(valid_idx))
     train_sampler = SubsetRandomSampler(train_idx)
     valid_sampler = SubsetRandomSampler(valid_idx)
 
