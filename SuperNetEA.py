@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn import DataParallel
 import torch.optim as optim
 import torchvision
 import utils
@@ -35,33 +36,37 @@ class SuperNetEA:
         self.model = ptcv_get_model(self.arch, pretrained=True)
 
     def build_supernet(self):
-        self.group_mod_list = nn.ModuleList()
+        idx=0
+        self.group_mod_dict = nn.ModuleDict()
         for name, mod in self.model.named_modules():
             if isinstance(mod, torch.nn.modules.conv.Conv2d):
                 n, c, h, w = mod.weight.shape
                 if h==1 or w ==1:
                     continue
                 g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
-                sub_mod_list = nn.ModuleList()
+                sub_mod_dict = nn.ModuleDict()
+                subidx = 0
                 for g in g_list:
                     new_mod = nn.Conv2d(mod.in_channels, mod.out_channels, mod.kernel_size, padding = mod.padding, bias = mod.bias, groups = g)
-                    sub_mod_list.append(new_mod)
-                self.group_mod_list.append(sub_mod_list)
+                    sub_mod_dict[str(subidx)] = new_mod
+                    subidx+=1
+                self.group_mod_dict[str(idx)] = sub_mod_dict
+                idx+=1
 
     def init_supernet(self):
         self.get_all_group_choice_supernet()
-        self.group_mod_list = nn.ModuleList()
+        self.group_mod_dict = nn.ModuleDict()
         idx=0
         for name, mod in self.model.named_modules():
             if isinstance(mod, torch.nn.modules.conv.Conv2d):
                 n, c, h, w = mod.weight.shape
                 if h==1 or w ==1:
                     continue
-                sub_mod_list = nn.ModuleList()
+                sub_mod_dict = nn.ModuleDict()
                 new_mod = nn.Conv2d(mod.in_channels, mod.out_channels, mod.kernel_size, padding = mod.padding, bias = mod.bias, groups = mod.groups)
-                sub_mod_list.append(new_mod)
+                sub_mod_dict['0'] = new_mod
                 nn.init.xavier_uniform_(new_mod.weight)
-                self.group_mod_list.append(sub_mod_list)
+                self.group_mod_dict[str(idx)] = sub_mod_dict
                 self.not_been_built_list[idx].remove(new_mod.groups)
                 idx+=1
 
@@ -92,7 +97,8 @@ class SuperNetEA:
                     g = self.not_been_built_list[idx][0]
                     new_mod = nn.Conv2d(mod.in_channels, mod.out_channels, mod.kernel_size, padding = mod.padding, bias = mod.bias, groups = g)
                     nn.init.xavier_uniform_(new_mod.weight)
-                    self.group_mod_list[idx].append(new_mod)
+                    subidx = len(self.group_mod_dict[str(idx)])
+                    self.group_mod_dict[str(idx)][str(subidx)] = new_mod
                     self.not_been_built_list[idx].remove(g)
                 idx+=1
 
@@ -104,7 +110,7 @@ class SuperNetEA:
                 if h==1 or w ==1:
                     continue
                 t = self.genome_idx_type[idx]
-                self.group_mod_list[idx][t].weight = torch.nn.Parameter(mod.weight)
+                self.group_mod_dict.module[str(idx)][str(t)].weight = torch.nn.Parameter(mod.weight)
                 idx+=1
     
     def pretrained_to_all_supernet(self):
@@ -114,7 +120,8 @@ class SuperNetEA:
                 n, c, h, w = mod.weight.shape
                 if h==1 or w ==1:
                     continue
-                for choice in self.group_mod_list[idx]:
+                for i in range(len(self.group_mod_dict[str(idx)])):
+                    choice = self.group_mod_dict[str(idx)][str(i)]
                     if choice.groups == mod.groups:
                         choice.weight = torch.nn.Parameter(mod.weight)
                     else:
@@ -132,19 +139,6 @@ class SuperNetEA:
                         choice.weight = torch.nn.Parameter(wnew)
                 idx+=1
 
-    def permute(self, n_sort=10):
-        self.model.cpu()
-        for name, mod in self.model.named_modules():
-            if isinstance(mod, torch.nn.modules.conv.Conv2d):
-                n, c, h, w = mod.weight.shape
-                if h==1 or w ==1:
-                    continue
-                g_list = utils.get_groups_choice_list(mod.in_channels, mod.out_channels)
-                if len(g_list) > 1:
-                    w = mod.weight.detach()
-                    w = utils.get_permute_weight(w, g_list[1], n_sort)
-                    mod.weight = torch.nn.Parameter(w)
-
     def genome_build_model(self, genome_list):
         idx = 0
         self.genome_type=[]
@@ -156,8 +150,8 @@ class SuperNetEA:
                     continue
 
                 t = genome_list[idx]
-                mod.weight = torch.nn.Parameter(self.group_mod_list[idx][t].weight)
-                mod.groups = self.group_mod_list[idx][t].groups
+                mod.weight = torch.nn.Parameter(self.group_mod_dict[str(idx)][str(t)].weight)
+                mod.groups = self.group_mod_dict[str(idx)][str(t)].groups
                 self.genome_type.append(mod.groups)
                 self.genome_idx_type.append(t)
                 idx+=1
@@ -171,9 +165,9 @@ class SuperNetEA:
                 n, c, h, w = mod.weight.shape
                 if h==1 or w ==1:
                     continue
-                t = random.randint(0, len(self.group_mod_list[idx])-1)
-                mod.weight = torch.nn.Parameter(self.group_mod_list[idx][t].weight)
-                mod.groups = self.group_mod_list[idx][t].groups
+                t = random.randint(0, len(self.group_mod_dict.module[str(idx)])-1)
+                mod.weight = torch.nn.Parameter(self.group_mod_dict.module[str(idx)][str(t)].weight)
+                mod.groups = self.group_mod_dict.module[str(idx)][str(t)].groups
                 self.genome_type.append(mod.groups)
                 self.genome_idx_type.append(t)
                 idx+=1
@@ -232,7 +226,7 @@ class SuperNetEA:
                 p2 = []
                 for i in range(len(p1)):
                     if random.random() < prob:
-                        p2.append(random.randint(0,len(self.group_mod_list[i])-1))
+                        p2.append(random.randint(0,len(self.group_mod_dict[str(i)])-1))
                     else:
                         p2.append(p1[i])
                 self.genome_build_model(p2)
@@ -356,7 +350,7 @@ class SuperNetEA:
             if params >= self.params*0.9 and params <= self.params*1.1:
                 return
         self.random_model()
-        
+
     def train_supernet(self, epoch, lr=0.1):
         dynamic_lr = lr
         for e in range(epoch):
@@ -372,6 +366,8 @@ class SuperNetEA:
         losses = utils.AverageMeter()
         top1 = utils.AverageMeter()
         top5 = utils.AverageMeter()
+        self.model = DataParallel(self.model)
+        self.group_mod_dict = DataParallel(self.group_mod_dict)
         for inputs, labels in self.trainloader:
             if valid==True:
                 self.random_model_valid()
