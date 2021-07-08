@@ -148,10 +148,9 @@ class SuperNetEA:
                 n, c, h, w = mod.weight.shape
                 if h==1 or w ==1:
                     continue
-
                 t = genome_list[idx]
-                mod.weight = torch.nn.Parameter(self.group_mod_dict[str(idx)][str(t)].weight)
-                mod.groups = self.group_mod_dict[str(idx)][str(t)].groups
+                mod.weight = torch.nn.Parameter(self.group_mod_dict.module[str(idx)][str(t)].weight)
+                mod.groups = self.group_mod_dict.module[str(idx)][str(t)].groups
                 self.genome_type.append(mod.groups)
                 self.genome_idx_type.append(t)
                 idx+=1
@@ -226,7 +225,7 @@ class SuperNetEA:
                 p2 = []
                 for i in range(len(p1)):
                     if random.random() < prob:
-                        p2.append(random.randint(0,len(self.group_mod_dict[str(i)])-1))
+                        p2.append(random.randint(0,len(self.group_mod_dict.module[str(i)])-1))
                     else:
                         p2.append(p1[i])
                 self.genome_build_model(p2)
@@ -253,12 +252,11 @@ class SuperNetEA:
         return True
 
     def count_flops_params(self):
-        self.model.cpu()
         if self.dataset == "cifar10" or self.dataset =="cifar100":
-            inputs = torch.randn(1, 3, 32, 32)
+            inputs = torch.randn(1, 3, 32, 32).cuda()
         else:
-            inputs = torch.randn(1, 3, 224, 224)
-        macs, params = profile(self.model, inputs = (inputs,), verbose=False)
+            inputs = torch.randn(1, 3, 224, 224).cuda()
+        macs, params = profile(self.model.module, inputs = (inputs,), verbose=False)
         return macs, params
     
     def measure_latency(self):
@@ -352,6 +350,8 @@ class SuperNetEA:
         self.random_model()
 
     def train_supernet(self, epoch, lr=0.1):
+        self.model = DataParallel(self.model)
+        self.group_mod_dict = DataParallel(self.group_mod_dict)
         dynamic_lr = lr
         for e in range(epoch):
             if e % 10==0 and e!=0:
@@ -366,8 +366,6 @@ class SuperNetEA:
         losses = utils.AverageMeter()
         top1 = utils.AverageMeter()
         top5 = utils.AverageMeter()
-        self.model = DataParallel(self.model)
-        self.group_mod_dict = DataParallel(self.group_mod_dict)
         for inputs, labels in self.trainloader:
             if valid==True:
                 self.random_model_valid()
