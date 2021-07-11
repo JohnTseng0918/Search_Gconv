@@ -8,11 +8,11 @@ def get_args():
     parser.add_argument("--arch", default = "resnet164bn_cifar100", type=str)
     parser.add_argument("--train_batch_size", default = 128, help="train batch size", type=int)
     parser.add_argument("--validate_batch_size", default = 128, help="validate batch size", type=int)
-    parser.add_argument("--warmup_epoch", default = 50, help="number of warmup epoch", type=int)
     parser.add_argument("--FLOPs", default= None, help="FLOPs constraint", type=int)
     parser.add_argument("--params", default= None, help="Numbers of parameters constraint", type=int)
     parser.add_argument("--population", default= 50, help="Numbers of EA population", type=int)
     parser.add_argument("--search_epoch", default= 20, help="Numbers of EA search epoch", type=int)
+    parser.add_argument("--topk_num", default= 10, help="Numbers of topk", type=int)
     parser.add_argument("--num_workers", default= 16, help="dataloader num_workers", type=int)
     args = parser.parse_args()
     return args
