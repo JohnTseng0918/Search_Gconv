@@ -2,13 +2,11 @@ import torch
 import torch.nn as nn
 from torch.nn import DataParallel
 import torch.optim as optim
-import torchvision
 import utils
 import time
 import random
 from data_loader import get_train_valid_loader, get_test_loader
 from pytorchcv.model_provider import get_model as ptcv_get_model
-from thop import profile
 
 class SuperNetEA:
     def __init__(self, args):
@@ -256,9 +254,23 @@ class SuperNetEA:
             inputs = torch.randn(1, 3, 32, 32).cuda()
         else:
             inputs = torch.randn(1, 3, 224, 224).cuda()
-        macs, params = profile(self.model.module, inputs = (inputs,), verbose=False)
-        return macs, params
+        flops = utils.get_flops(self.model.module, inputs)
+        params = utils.get_parameters(self.model.module)
+        return flops, params
     
+    def show_init_model_info(self):
+        if self.dataset == "cifar10" or self.dataset =="cifar100":
+            inputs = torch.randn(1, 3, 32, 32)
+        else:
+            inputs = torch.randn(1, 3, 224, 224)
+        flops = utils.get_flops(self.model, inputs)
+        params = utils.get_parameters(self.model)
+        print("arch:", self.arch)
+        print("dataset:", self.dataset)
+        print("flops:", flops)
+        print("params:", params)
+
+
     def measure_latency(self):
         self.model.cpu()
         inputs = torch.randn(16, 3, 32, 32)

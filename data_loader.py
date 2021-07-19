@@ -134,7 +134,7 @@ def get_train_valid_loader(data_dir,
         np.random.shuffle(indices)
 
     train_idx, valid_idx = indices[split:], indices[:split]
-    print(len(train_idx),len(valid_idx))
+    print("training data length:", len(train_idx),"validation data length:", len(valid_idx))
     train_sampler = SubsetRandomSampler(train_idx)
     valid_sampler = SubsetRandomSampler(valid_idx)
 
