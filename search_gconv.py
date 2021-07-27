@@ -10,7 +10,7 @@ from data_loader import get_train_valid_loader, get_test_loader
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default = "cifar100", help="cifar10/cifar100/imagenet", type=str)
-    parser.add_argument("--epoch", default = 2, help="numbers of train supernet epoch", type=int)
+    parser.add_argument("--epoch", default = 1, help="numbers of train supernet epoch", type=int)
     parser.add_argument("--lr", default = 0.05, help="train supernet learning rate", type=float)
     parser.add_argument("--batch_size", default = 128, help="train batch size", type=int)
     parser.add_argument("--population", default= 20, help="Numbers of EA population", type=int)
@@ -133,7 +133,7 @@ def search(args, model, archlist, validate_loader, criterion, backup_model):
             p1, _ = s1
             p2, _ = s2
             child = [random.choice([i,j]) for i,j in zip(p1,p2)]
-            if check_constrain(backup_model, arch, args):
+            if check_constrain(backup_model, child, args):
                 crossover_child.append(tuple(child))
         
 
@@ -150,7 +150,7 @@ def search(args, model, archlist, validate_loader, criterion, backup_model):
                     p2.append(random.randint(0, archlist[i]-1))
                 else:
                     p2.append(p1[i])
-            if check_constrain(backup_model, arch, args):
+            if check_constrain(backup_model, p2, args):
                 mutation_child.append(tuple(p2))
 
         #union
@@ -163,7 +163,6 @@ def search(args, model, archlist, validate_loader, criterion, backup_model):
 def check_constrain(model, arch, args):
     inputs = torch.randn((1,3,32,32))
     params, flops = utils.get_params_flops(model, inputs, arch)
-    print(params, flops)
     if args.params != None and args.params <= params:
         return False
     if args.FLOPs != None and args.FLOPs <= flops:
@@ -212,11 +211,12 @@ def main():
     model = resnet164_oneshot()
     model.load_state_dict(torch.load("./pretrained/resnet164_cifar100_oneshot.pth"))
     model.grow_with_pretrained()
-    #model.grow_with_pretrained()
+    model.grow_with_pretrained()
     archlist = model.get_all_arch()
     criterion = nn.CrossEntropyLoss()
 
     backup_model = resnet164_oneshot()
+    backup_model.grow()
     backup_model.grow()
 
     trainloader, validateloader = get_train_valid_loader("./data/cifar100", args.batch_size, augment=True, random_seed=87, data=args.dataset)
