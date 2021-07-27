@@ -175,7 +175,7 @@ def train(train_loader, model, optimizer, scheduler, criterion, epoch):
         print("-------------------------------------------------")
         scheduler.step()
 
-def get_flops(model, input):
+def get_flops(model, input, arch):
     list_conv = []
 
     def conv_hook(self, input, output):
@@ -214,13 +214,74 @@ def get_flops(model, input):
             foo(c)
 
     foo(model)
-    out = model(input)
+    out = model(input, arch)
 
     total_flops = sum(sum(i) for i in [list_conv, list_linear])
     return total_flops
 
 def get_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def get_params_flops(model, input, arch):
+    list_conv_param = []
+    list_conv_flops = []
+
+    def conv_hook(self, input, output):
+        batch_size, input_channels, input_height, input_width = input[0].size()
+        output_channels, output_height, output_width = output[0].size()
+
+        assert self.in_channels % self.groups == 0
+
+        kernel_ops = self.kernel_size[0] * self.kernel_size[1] * (self.in_channels // self.groups)
+        #params = output_channels * kernel_ops
+        #flops = batch_size * params * output_height * output_width
+        flops = 2*output_height*output_width*(kernel_ops + 1)*output_channels * batch_size
+        params = self.weight.numel()
+        list_conv_param.append(params)
+        list_conv_flops.append(flops)
+        
+    list_linear_param = []
+    list_linear_flops = []
+
+    def linear_hook(self, input, output):
+        batch_size = input[0].size(0) if input[0].dim() == 2 else 1
+
+        #weight_ops = self.weight.nelement()
+        output_channels, input_channels = self.weight.shape
+        #flops = batch_size * weight_ops
+        flops = 2*input_channels*output_channels
+        params = self.weight.numel() + self.bias.numel()
+        
+        list_linear_param.append(params)
+        list_linear_flops.append(flops)
+    
+    list_bn_param = []
+    
+    def bn_hook(self, input, output):        
+        params = self.num_features*2
+        list_bn_param.append(params)
+
+    def foo(net):
+        childrens = list(net.children())
+        if not childrens:
+            if isinstance(net, torch.nn.Conv2d):
+                net.register_forward_hook(conv_hook)
+            if isinstance(net, torch.nn.Linear):
+                net.register_forward_hook(linear_hook)
+            if isinstance(net, torch.nn.BatchNorm2d):
+                net.register_forward_hook(bn_hook)
+            return
+        for c in childrens:
+            foo(c)
+
+    foo(model)
+    out = model(input, arch)
+
+    total_params = sum(sum(i) for i in [list_conv_param, list_linear_param, list_bn_param])
+    total_flops = sum(sum(i) for i in [list_conv_flops, list_linear_flops])
+    
+    return total_params, total_flops
+
 
 class CrossEntropyLabelSmooth(nn.Module):
 
