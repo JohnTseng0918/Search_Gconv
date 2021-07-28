@@ -1,4 +1,4 @@
-from data_loader import get_train_valid_loader, get_test_loader
+from data_loader_noddp import get_train_valid_loader, get_test_loader
 from pytorchcv.model_provider import get_model as ptcv_get_model
 import utils
 import torch
