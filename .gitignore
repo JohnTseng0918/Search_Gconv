@@ -1,3 +1,5 @@
+# text file
+*.txt
 # model
 *.pth
 
