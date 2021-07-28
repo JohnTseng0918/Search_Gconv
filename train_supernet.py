@@ -8,7 +8,7 @@ import random
 import utils
 import torch.optim as optim
 from models.resnet_oneshot_cifar import resnet164_oneshot
-from data_loader_ddp import get_train_valid_loader, get_test_loader
+from data_loader_ddp import get_train_valid_loader
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 def setup(rank, world_size):
@@ -32,14 +32,11 @@ def get_args():
     parser.add_argument("--dataset", default = "cifar100", help="cifar10/cifar100/imagenet", type=str)
     parser.add_argument("--epoch", default = 1, help="numbers of train supernet epoch", type=int)
     parser.add_argument("--lr", default = 0.05, help="train supernet learning rate", type=float)
+    parser.add_argument("--momentum", default = 0.9, help="train supernet momentum", type=float)
+    parser.add_argument("--weight_decay", default = 0.0001, help="train supernet weight_decay", type=float)
     parser.add_argument("--batch_size", default = 128, help="train batch size", type=int)
-    parser.add_argument("--population", default= 20, help="Numbers of EA population", type=int)
-    parser.add_argument("--search_epoch", default= 10, help="Numbers of EA search epoch", type=int)
-    parser.add_argument("--topk_num", default= 10, help="Numbers of topk", type=int)
-    parser.add_argument("--FLOPs", default= None, help="FLOPs constraint", type=int)
-    parser.add_argument("--params", default= None, help="Numbers of parameters constraint", type=int)
-    parser.add_argument("--ftepoch", default = 10, help="numbers of fine tune epoch", type=int)
-    parser.add_argument("--ftlr", default = 0.005, help="fine tune learning rate", type=float)
+    parser.add_argument("--grow", default = 2, help="number of grow supernet", type=int)
+    parser.add_argument("--seed", default = 87, help="random seed", type=int)
     args = parser.parse_args()
     return args
 
@@ -53,7 +50,7 @@ def train(model, args, trainloader, archlist, criterion, rank):
     model.train()
     model = model.to(rank)
 
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, weight_decay=0.0001, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epoch)
     for e in range(args.epoch):
         losses = utils.AverageMeter()
@@ -81,24 +78,16 @@ def train(model, args, trainloader, archlist, criterion, rank):
 
         scheduler.step()
 
-        print("epoch:", e+1)
-        print("top1 acc:", top1.avg)
-        print("top5 acc:", top5.avg)
-        print("avg loss:", losses.avg)
-        print("-------------------------------------------------")
+        print("epoch:", e+1, "top1 acc:", top1.avg, "top5 acc:", top5.avg, "avg loss:", losses.avg)
 
 def main(rank, world_size):
     args = get_args()
     model = resnet164_oneshot()
     model.load_state_dict(torch.load("./pretrained/resnet164_cifar100_oneshot.pth"))
-    model.grow_with_pretrained()
-    model.grow_with_pretrained()
+    for i in range(args.grow):
+        model.grow_with_pretrained()
     archlist = model.get_all_arch()
     criterion = nn.CrossEntropyLoss()
-
-    backup_model = resnet164_oneshot()
-    backup_model.grow()
-    backup_model.grow()
 
     print(f"Running main(**args) on rank {rank}.")
     setup(rank, world_size)
@@ -107,13 +96,11 @@ def main(rank, world_size):
     ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
 
-    trainloader, validateloader = get_train_valid_loader("./data/cifar100", args.batch_size, augment=True, random_seed=87, data=args.dataset)
-    testloader = get_test_loader("./data/cifar100", args.batch_size, shuffle=False, data=args.dataset)
+    trainloader, validateloader = get_train_valid_loader("./data/cifar100", args.batch_size, augment=True, random_seed=args.seed, data=args.dataset)
 
     train(ddp_model, args, trainloader, archlist, criterion, rank)
-    print("train model done")
     if rank==0:
-        torch.save(ddp_model.state_dict(), "./resnet164_supernet.py")
+        torch.save(ddp_model.module.state_dict(), "./resnet164_supernet.pth")
     cleanup()
 
 if __name__ == "__main__":
