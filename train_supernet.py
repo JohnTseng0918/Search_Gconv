@@ -8,7 +8,7 @@ import random
 import utils
 import torch.optim as optim
 from models.resnet_oneshot_cifar import resnet164_oneshot
-from data_loader_ddp import get_train_valid_loader
+from data_loader import get_train_valid_loader
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 def setup(rank, world_size):
@@ -34,7 +34,7 @@ def get_args():
     parser.add_argument("--lr", default = 0.05, help="train supernet learning rate", type=float)
     parser.add_argument("--momentum", default = 0.9, help="train supernet momentum", type=float)
     parser.add_argument("--weight_decay", default = 0.0001, help="train supernet weight_decay", type=float)
-    parser.add_argument("--batch_size", default = 128, help="train batch size", type=int)
+    parser.add_argument("--batch_size", default = 256, help="train batch size", type=int)
     parser.add_argument("--grow", default = 2, help="number of grow supernet", type=int)
     parser.add_argument("--seed", default = 87, help="random seed", type=int)
     args = parser.parse_args()

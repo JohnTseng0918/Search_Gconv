@@ -14,7 +14,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default = "cifar100", help="cifar10/cifar100/imagenet", type=str)
     parser.add_argument("--grow", default = 2, help="number of grow supernet", type=int)
-    parser.add_argument("--batch_size", default = 128, help="train batch size", type=int)
+    parser.add_argument("--batch_size", default = 256, help="train batch size", type=int)
     parser.add_argument("--seed", default = 87, help="random seed", type=int)
     parser.add_argument("--ftepoch", default = 1, help="numbers of fine tune epoch", type=int)
     parser.add_argument("--ftlr", default = 0.005, help="fine tune learning rate", type=float)
@@ -130,12 +130,15 @@ def main(rank, world_size):
 
     fine_tune(ddp_model, args, trainloader, testloader, arch, criterion, rank)
     ddp_model = ddp_model.to("cpu")
-    cleanup()
-    torch.save(ddp_model.module.state_dict(), "./resnet164_finetune_supernet.pth")
-    inputs = torch.randn((1,3,32,32))
-    params, flops = utils.get_params_flops(model, inputs, arch)
-    print("pamras:", params, "flops:", flops)
 
+    if rank == 0:
+        torch.save(ddp_model.module.state_dict(), "./resnet164_finetune_supernet.pth")
+        inputs = torch.randn((1,3,32,32))
+        params, flops = utils.get_params_flops(model, inputs, arch)
+        print("pamras:", params, "flops:", flops)
+
+    cleanup()
+    
 if __name__ == "__main__":
     n_gpus = torch.cuda.device_count()
     print(f"You have {n_gpus} GPUs.")

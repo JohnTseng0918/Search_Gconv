@@ -5,13 +5,13 @@ import random
 import argparse
 import utils
 from models.resnet_oneshot_cifar import resnet164_oneshot
-from data_loader import get_train_valid_loader, get_test_loader
+from data_loader_noddp import get_train_valid_loader, get_test_loader
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default = "cifar100", help="cifar10/cifar100/imagenet", type=str)
     parser.add_argument("--grow", default = 2, help="number of grow supernet", type=int)
-    parser.add_argument("--batch_size", default = 128, help="train batch size", type=int)
+    parser.add_argument("--batch_size", default = 256, help="train batch size", type=int)
     parser.add_argument("--population", default= 20, help="Numbers of EA population", type=int)
     parser.add_argument("--search_epoch", default= 1, help="Numbers of EA search epoch", type=int)
     parser.add_argument("--topk_num", default= 10, help="Numbers of topk", type=int)
