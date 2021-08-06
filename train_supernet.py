@@ -95,8 +95,8 @@ def main(rank, world_size):
     model = model.to(rank)
     ddp_model = DDP(model, device_ids=[rank], find_unused_parameters=True)
 
-
-    trainloader, validateloader = get_train_valid_loader("./data/cifar100", args.batch_size, augment=True, random_seed=args.seed, data=args.dataset)
+    path = "./data/" + args.dataset
+    trainloader, validateloader = get_train_valid_loader(path, args.batch_size, augment=True, random_seed=args.seed, data=args.dataset)
 
     train(ddp_model, args, trainloader, archlist, criterion, rank)
     if rank==0:

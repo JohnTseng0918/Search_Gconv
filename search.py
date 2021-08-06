@@ -65,6 +65,7 @@ def search(args, model, archlist, validate_loader, criterion, backup_model):
     populist = []
     topk = []
     count=0
+    record = set()
     while count < args.population:
         arch = random_model(archlist)
         isvalid = check_constrain(backup_model, arch, args)
@@ -79,9 +80,13 @@ def search(args, model, archlist, validate_loader, criterion, backup_model):
         #inference
         for p in populist:
             print("arch:", p)
-            acc1, acc5, loss = validate(validate_loader, model, criterion, p)
-            print("acc1:", acc1, "acc5:", acc5, "loss:", loss)
-            topk.append((p,acc1))
+            if p in record:
+                print("this arch have been inference")
+            else:
+                acc1, acc5, loss = validate(validate_loader, model, criterion, p)
+                print("acc1:", acc1, "acc5:", acc5, "loss:", loss)
+                topk.append((p,acc1))
+                record.add(p)
         
         #update topk
         topk = list(set(topk))
@@ -138,7 +143,8 @@ def main(n_gpus):
     model.load_state_dict(torch.load("./resnet164_supernet.pth"))
     model = DataParallel(model)
     model.cuda()
-    trainloader, validateloader = get_train_valid_loader("./data/cifar100", args.batch_size*n_gpus, augment=True, random_seed=args.seed, data=args.dataset)
+    path = "./data/" + args.dataset
+    trainloader, validateloader = get_train_valid_loader(path, args.batch_size*n_gpus, augment=True, random_seed=args.seed, data=args.dataset)
     topk = search(args, model, archlist, validateloader, criterion, backup_model)
     file = open('./topk.txt','w+')
     with open('./topk.txt','w+') as file:

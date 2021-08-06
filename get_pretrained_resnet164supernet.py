@@ -6,10 +6,13 @@ import torch.optim as optim
 import torch.nn as nn
 from models.resnet_oneshot_cifar import resnet164_oneshot
 
+dataset = "cifar100"
+path = "./data/" + dataset
+
 model = ptcv_get_model("resnet164bn_cifar100", pretrained=True)
 oneshot_model = resnet164_oneshot()
 
-testloader = get_test_loader("./data/cifar100", 128, shuffle=False, data="cifar100")
+testloader = get_test_loader(path, 128, shuffle=False, data=dataset)
 
 conv_w_list = []
 bn_w_list = []
@@ -41,7 +44,7 @@ for name, mod in oneshot_model.named_modules():
         mod.weight = torch.nn.Parameter(linear_w_list[linear_idx])
         mod.bias = torch.nn.Parameter(linear_bias_list[linear_idx])
 
-trainloader, validateloader = get_train_valid_loader("./data/cifar100", 128, augment=True, random_seed=87, data="cifar100")
+trainloader, validateloader = get_train_valid_loader(path, 128, augment=True, random_seed=87, data=dataset)
 
 oneshot_model.cuda()
 oneshot_model.train()
