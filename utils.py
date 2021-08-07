@@ -227,15 +227,14 @@ def get_params_flops(model, input, arch):
     list_conv_flops = []
 
     def conv_hook(self, input, output):
+        bias_ops = 1 if self.bias is not None else 0
         batch_size, input_channels, input_height, input_width = input[0].size()
         output_channels, output_height, output_width = output[0].size()
 
         assert self.in_channels % self.groups == 0
 
         kernel_ops = self.kernel_size[0] * self.kernel_size[1] * (self.in_channels // self.groups)
-        #params = output_channels * kernel_ops
-        #flops = batch_size * params * output_height * output_width
-        flops = 2*output_height*output_width*(kernel_ops + 1)*output_channels * batch_size
+        flops = 2 * output_height * output_width * (kernel_ops + bias_ops) * output_channels * batch_size
         params = self.weight.numel()
         list_conv_param.append(params)
         list_conv_flops.append(flops)
@@ -244,12 +243,9 @@ def get_params_flops(model, input, arch):
     list_linear_flops = []
 
     def linear_hook(self, input, output):
-        batch_size = input[0].size(0) if input[0].dim() == 2 else 1
-
-        #weight_ops = self.weight.nelement()
-        output_channels, input_channels = self.weight.shape
-        #flops = batch_size * weight_ops
-        flops = 2*input_channels*output_channels
+        total_mul = self.in_features
+        num_elements = output.numel()
+        flops = 2 * total_mul * num_elements
         params = self.weight.numel() + self.bias.numel()
         
         list_linear_param.append(params)
