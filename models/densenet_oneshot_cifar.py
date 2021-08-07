@@ -79,8 +79,7 @@ class DenseBlock(nn.Sequential):
         super().__init__()
 
         for i in range(num_layers):
-            layer = Bottleneck(
-                in_channels + i * growth_rate, growth_rate=growth_rate)
+            layer = Bottleneck(in_channels + i * growth_rate, growth_rate=growth_rate)
             self.add_module('denselayer_%d' % (i + 1), layer)
 
 
@@ -142,8 +141,7 @@ class CondenseNet(nn.Module):
         # initialize
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(
-                    m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -165,8 +163,7 @@ class CondenseNet(nn.Module):
             trans = Transition(in_channels=self.num_features)
             self.features.add_module('transition_%d' % (i + 1), trans)
         else:
-            self.features.add_module(
-                'norm_last', nn.BatchNorm2d(self.num_features))
+            self.features.add_module('norm_last', nn.BatchNorm2d(self.num_features))
             self.features.add_module('relu_last', nn.ReLU(inplace=True))
             self.features.add_module('pool_last', nn.AvgPool2d(self.pool_size))
 
@@ -257,8 +254,6 @@ class condensenet86_oneshot(nn.Module):
             self.features.add_module('pool_last', nn.AvgPool2d(self.pool_size))
 
     def forward(self, x, progress=None):
-        # if progress:
-        #   LearnedGroupConv.global_progress = progress
         features = self.features(x)
         out = features.view(features.size(0), -1)
         out = self.classifier(out)
