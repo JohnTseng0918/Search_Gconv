@@ -30,7 +30,7 @@ def run_demo(demo_fn, world_size):
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default = "cifar100", help="cifar10/cifar100/imagenet", type=str)
-    parser.add_argument("--epoch", default = 300, help="numbers of train supernet epoch", type=int)
+    parser.add_argument("--epoch", default = 100, help="numbers of train supernet epoch", type=int)
     parser.add_argument("--lr", default = 0.1, help="train supernet learning rate", type=float)
     parser.add_argument("--momentum", default = 0.9, help="train supernet momentum", type=float)
     parser.add_argument("--weight_decay", default = 0.0001, help="train supernet weight_decay", type=float)
@@ -79,7 +79,7 @@ def main(rank, world_size):
             top1.update(prec1.item(), n)
             top5.update(prec5.item(), n)
 
-        print("train top1 acc:", top1.avg, "train top5 acc:",top5.avg, "train avg loss:", losses.avg)
+        print("train epoch:", e+1, " top1 acc:", top1.avg, "train top5 acc:",top5.avg, "train avg loss:", losses.avg)
         scheduler.step()
 
         if e > args.epoch*0.5 and rank==0:
@@ -93,7 +93,7 @@ def main(rank, world_size):
                     inputs = inputs.to(rank)
                     labels = labels.to(rank)
 
-                    outputs = model(inputs, arch)
+                    outputs = ddp_model(inputs, arch)
 
                     loss = criterion(outputs, labels)
 
@@ -103,7 +103,7 @@ def main(rank, world_size):
                     testtop1.update(prec1.item(), n)
                     testtop5.update(prec5.item(), n)
 
-            print("test top1 acc:", testtop1.avg, "test top5 acc:",testtop5.avg, "test avg loss:", testlosses.avg)
+            print("test top1 acc:", testtop1.avg, "top5 acc:",testtop5.avg, "avg loss:", testlosses.avg)
             
         
     if rank==0:
