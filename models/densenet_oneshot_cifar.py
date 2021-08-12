@@ -87,6 +87,27 @@ class Bottleneck(nn.Module):
             self.choice.append(conv)
         return len(self.choice)
 
+    def grow_choice_with_pretrained(self):
+        outchannel, inchannel, _, _ = self.choice[0].weight.shape
+        g_list = get_groups_choice_list(inchannel, outchannel)
+        if len(g_list) > len(self.choice):
+            g = g_list[len(self.choice)]
+            conv = conv3x3(inchannel, outchannel, self.choice[0].stride, g, 1)
+            # move groups = 1 weight to groups = n
+            W = self.choice[0].weight
+            outc_start, intc_start = 0, 0
+            outc_interval = int(outchannel/g)
+            intc_interval = int(inchannel/g)
+            tensorlist=[]
+            for i in range(g):
+                tensorlist.append(W[outc_start:outc_start+outc_interval, intc_start:intc_start+intc_interval,:,:])
+                outc_start+=outc_interval
+                intc_start+=intc_interval
+            wnew = torch.cat(tuple(tensorlist),0)
+            conv.weight = torch.nn.Parameter(wnew)
+            self.choice.append(conv)
+        return len(self.choice)
+
 
 class DenseBlock(nn.Sequential):
     """ Handles the logic of creating Dense layers """
@@ -201,7 +222,16 @@ class condensenet86_oneshot(nn.Module):
                 self.all_choice_list.append(n)
             else:
                 self.all_choice_list.append(1)
-        print(self.all_choice_list)
+
+    def grow_with_pretrained(self):
+        self.all_choice_list = []
+        for i in range(len(self.features)):
+            if isinstance(self.features[i] , Bottleneck):
+                n = self.features[i].grow_choice_with_pretrained()
+                self.all_choice_list.append(n)
+            else:
+                self.all_choice_list.append(1)
+    
 
     def get_all_arch(self):
         return tuple(self.all_choice_list)

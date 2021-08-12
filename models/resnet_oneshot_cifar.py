@@ -170,6 +170,17 @@ class resnet164_oneshot(nn.Module):
         self.avgpool = nn.AvgPool2d(kernel_size=8, stride=1, padding=0)
         self.fc = nn.Linear(256, num_classes)
 
+        # initialize
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(
+                    m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                m.bias.data.zero_()
+
     def _make_layer(self, block: Type[Union[BasicBlock, Bottleneck]], planes: int, blocks: int,
                     stride: int = 1, dilate: bool = False) -> nn.Sequential:
         norm_layer = self._norm_layer
@@ -223,3 +234,8 @@ class resnet164_oneshot(nn.Module):
     
     def get_all_arch(self):
         return tuple(self.all_choice_list)
+
+    def get_origin_arch(self):
+        num_feature = len(self.features)
+        res = tuple([0] * num_feature)
+        return res
