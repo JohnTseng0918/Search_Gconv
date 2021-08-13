@@ -8,6 +8,8 @@ import random
 import utils
 import torch.optim as optim
 from models.resnet_oneshot_cifar import resnet164_oneshot
+from models.resnet_oneshot import resnet50_oneshot
+from models.densenet_oneshot_cifar import condensenet86_oneshot
 from data_loader import get_train_valid_loader
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -43,7 +45,13 @@ def get_args():
 def random_model(archlist):
     retlist = []
     for i in archlist:
-        retlist.append(random.randint(0, i-1))
+        if isinstance(i, tuple):
+            t = []
+            for num in i:
+                t.append(random.randint(0, num-1))
+            retlist.append(tuple(t))
+        else:
+            retlist.append(random.randint(0, i-1))
     return tuple(retlist)
 
 def train(model, args, trainloader, archlist, criterion, rank):
@@ -58,6 +66,7 @@ def train(model, args, trainloader, archlist, criterion, rank):
         top5 = utils.AverageMeter()
         for inputs, labels in trainloader:
             arch = random_model(archlist)
+
 
             inputs = inputs.to(rank)
             labels = labels.to(rank)
@@ -82,8 +91,8 @@ def train(model, args, trainloader, archlist, criterion, rank):
 
 def main(rank, world_size):
     args = get_args()
-    model = resnet164_oneshot()
-    model.load_state_dict(torch.load("./pretrained/resnet164_cifar100_oneshot.pth"))
+    model = condensenet86_oneshot()
+    #model.load_state_dict(torch.load("./pretrained/resnet50_oneshot.pth"))
     for i in range(args.grow):
         model.grow_with_pretrained()
     archlist = model.get_all_arch()
@@ -100,7 +109,7 @@ def main(rank, world_size):
 
     train(ddp_model, args, trainloader, archlist, criterion, rank)
     if rank==0:
-        torch.save(ddp_model.module.state_dict(), "./resnet164_supernet.pth")
+        torch.save(ddp_model.module.state_dict(), "./condensenet86_supernet.pth")
     cleanup()
 
 if __name__ == "__main__":

@@ -9,6 +9,8 @@ import utils
 from torch.nn.parallel import DistributedDataParallel as DDP
 from data_loader import get_train_valid_loader, get_test_loader
 from models.resnet_oneshot_cifar import resnet164_oneshot
+from models.resnet_oneshot import resnet50_oneshot
+from models.densenet_oneshot_cifar import condensenet86_oneshot
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -96,26 +98,20 @@ def fine_tune(model, args, trainloader, testloader, arch, criterion, rank):
 
 def main(rank, world_size):
     args = get_args()
-    model = resnet164_oneshot()
+    model = condensenet86_oneshot()
     for i in range(args.grow):
         model.grow()
     archlist = model.get_all_arch()
     criterion = nn.CrossEntropyLoss()
-    model.load_state_dict(torch.load("./resnet164_supernet.pth"))
+    model.load_state_dict(torch.load("./condensenet86_supernet.pth"))
     with open("./topk.txt") as f:
         lines = f.readlines()
     
     topk = []
     for i in range(len(lines)):
         a = lines[i]
-        a = a.replace(" ", "")
-        a = a.replace("(", "")
-        a = a.replace(")", "")
-        a = a.replace("\n", "")
-        l = a.split(",")
-        l = tuple(map(int, l))
-        topk.append(l)
-
+        t = eval(a)
+        topk.append(t)
     arch = topk[0]
 
     print(f"Running main(**args) on rank {rank}.")
