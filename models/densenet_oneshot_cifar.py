@@ -266,6 +266,10 @@ class condensenet86_oneshot(nn.Module):
         return tuple(self.all_choice_list)
 
     def get_origin_arch(self):
-        num_feature = len(self.features)
-        res = tuple([0] * num_feature)
-        return res
+        res=[]
+        for i in self.features:
+            if isinstance(i, Bottleneck):
+                res.append((0, 0))
+            else:
+                res.append(0)
+        return tuple(res)
