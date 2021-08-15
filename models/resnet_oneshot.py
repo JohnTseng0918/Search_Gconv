@@ -10,9 +10,9 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, d
                      padding=dilation, groups=groups, bias=False, dilation=dilation)
 
 
-def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
+def conv1x1(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1,) -> nn.Conv2d:
     """1x1 convolution"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, groups=groups, bias=False)
 
 class BasicBlock(nn.Module):
     expansion: int = 1
@@ -82,26 +82,62 @@ class Bottleneck(nn.Module):
             norm_layer = nn.BatchNorm2d
         width = int(planes * (base_width / 64.)) * groups
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
-        self.conv1 = conv1x1(inplanes, width)
+        self.choice0 = nn.ModuleList()
+        self.choice0.append(conv1x1(inplanes, width))
+        #self.conv1 = conv1x1(inplanes, width)
         self.bn1 = norm_layer(width)
         self.choice = nn.ModuleList()
         self.choice.append(conv3x3(width, width, stride, groups, dilation))
         self.bn2 = norm_layer(width)
-        self.conv3 = conv1x1(width, planes * self.expansion)
+        self.choice2 = nn.ModuleList()
+        self.choice2.append(conv1x1(width, planes * self.expansion))
         self.bn3 = norm_layer(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
     
     def grow_choice(self):
+        outchannel, inchannel, _, _ = self.choice0[0].weight.shape
+        g_list = utils.get_groups_choice_list(inchannel, outchannel)
+        if len(g_list) > len(self.choice0):
+            conv = conv1x1(inchannel, outchannel, groups = g_list[len(self.choice0)])
+            self.choice0.append(conv)
+
+
         outchannel, inchannel, _, _ = self.choice[0].weight.shape
         g_list = utils.get_groups_choice_list(inchannel, outchannel)
         if len(g_list) > len(self.choice):
             conv = conv3x3(inchannel, outchannel, self.stride, g_list[len(self.choice)], 1)
             self.choice.append(conv)
-        return len(self.choice)
+
+        outchannel, inchannel, _, _ = self.choice2[0].weight.shape
+        g_list = utils.get_groups_choice_list(inchannel, outchannel)
+        if len(g_list) > len(self.choice2):
+            conv = conv1x1(inchannel, outchannel, groups = g_list[len(self.choice2)])
+            self.choice2.append(conv)
+
+        return tuple([len(self.choice0), len(self.choice), len(self.choice2)])
 
     def grow_choice_with_pretrained(self):
+        outchannel, inchannel, _, _ = self.choice0[0].weight.shape
+        g_list = utils.get_groups_choice_list(inchannel, outchannel)
+        if len(g_list) > len(self.choice0):
+            g = g_list[len(self.choice0)]
+            conv = conv1x1(inchannel, outchannel, groups = g_list[len(self.choice0)])
+            # move groups = 1 weight to groups = n
+            W = self.choice0[0].weight
+            outc_start, intc_start = 0, 0
+            outc_interval = int(outchannel/g)
+            intc_interval = int(inchannel/g)
+            tensorlist=[]
+            for i in range(g):
+                tensorlist.append(W[outc_start:outc_start+outc_interval, intc_start:intc_start+intc_interval,:,:])
+                outc_start+=outc_interval
+                intc_start+=intc_interval
+            wnew = torch.cat(tuple(tensorlist),0)
+            conv.weight = torch.nn.Parameter(wnew)
+            self.choice0.append(conv)
+
         outchannel, inchannel, _, _ = self.choice[0].weight.shape
         g_list = utils.get_groups_choice_list(inchannel, outchannel)
         if len(g_list) > len(self.choice):
@@ -120,19 +156,38 @@ class Bottleneck(nn.Module):
             wnew = torch.cat(tuple(tensorlist),0)
             conv.weight = torch.nn.Parameter(wnew)
             self.choice.append(conv)
-        return len(self.choice)
+        
+        outchannel, inchannel, _, _ = self.choice2[0].weight.shape
+        g_list = utils.get_groups_choice_list(inchannel, outchannel)
+        if len(g_list) > len(self.choice2):
+            g = g_list[len(self.choice2)]
+            conv = conv1x1(inchannel, outchannel, groups = g_list[len(self.choice2)])
+            # move groups = 1 weight to groups = n
+            W = self.choice2[0].weight
+            outc_start, intc_start = 0, 0
+            outc_interval = int(outchannel/g)
+            intc_interval = int(inchannel/g)
+            tensorlist=[]
+            for i in range(g):
+                tensorlist.append(W[outc_start:outc_start+outc_interval, intc_start:intc_start+intc_interval,:,:])
+                outc_start+=outc_interval
+                intc_start+=intc_interval
+            wnew = torch.cat(tuple(tensorlist),0)
+            conv.weight = torch.nn.Parameter(wnew)
+            self.choice2.append(conv)
+        return tuple([len(self.choice0), len(self.choice), len(self.choice2)])
 
     def forward(self, x: Tensor, arch) -> Tensor:
         identity = x
-
-        out = self.conv1(x)
+        #out = self.conv1(x)
+        out = self.choice0[arch[0]](x)
         out = self.bn1(out)
         out = self.relu(out)
-        out = self.choice[arch](out)
+        out = self.choice[arch[1]](out)
         out = self.bn2(out)
         out = self.relu(out)
-
-        out = self.conv3(out)
+        out = self.choice2[arch[2]](out)
+        #out = self.conv3(out)
         out = self.bn3(out)
 
         if self.downsample is not None:
@@ -230,6 +285,10 @@ class resnet50_oneshot(nn.Module):
         return tuple(self.all_choice_list)
 
     def get_origin_arch(self):
-        num_feature = len(self.features)
-        res = tuple([0] * num_feature)
-        return res
+        res=[]
+        for i in self.features:
+            if isinstance(i, Bottleneck):
+                res.append((0, 0))
+            else:
+                res.append(0)
+        return tuple(res)
