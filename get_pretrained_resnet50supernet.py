@@ -8,11 +8,13 @@ from models.resnet_oneshot import resnet50_oneshot
 
 dataset = "imagenet"
 path = "./data/" + dataset
+train_path = path+"/train"
+test_path = path+"/val"
 
 model = ptcv_get_model("resnet50", pretrained=True)
 oneshot_model = resnet50_oneshot()
 
-testloader = get_test_loader(path, 32, shuffle=False, data=dataset)
+testloader = get_test_loader(test_path, 32, shuffle=False, data=dataset)
 
 conv_w_list = []
 bn_w_list = []
@@ -44,7 +46,7 @@ for name, mod in oneshot_model.named_modules():
         mod.weight = torch.nn.Parameter(linear_w_list[linear_idx])
         mod.bias = torch.nn.Parameter(linear_bias_list[linear_idx])
 
-trainloader, validateloader = get_train_valid_loader(path, 32, augment=True, random_seed=87, data=dataset)
+trainloader, validateloader = get_train_valid_loader(train_path, 32, augment=True, random_seed=87, data=dataset)
 
 arch = oneshot_model.get_origin_arch()
 print(arch)
@@ -56,7 +58,7 @@ losses = utils.AverageMeter()
 top1 = utils.AverageMeter()
 top5 = utils.AverageMeter()
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(oneshot_model.parameters(), lr=0.001, momentum=0, weight_decay=0.0001)
+optimizer = optim.SGD(oneshot_model.parameters(), lr=0.00000001, momentum=0, weight_decay=0.0001)
 
 for i, (inputs, labels) in enumerate(trainloader):
     inputs = inputs.cuda()
@@ -77,30 +79,7 @@ for i, (inputs, labels) in enumerate(trainloader):
     top5.update(prec5.item(), n)
     
     print(i, top1.avg, top5.avg, losses.avg)
-    if i==1000:
+    if i==20:
         break
-
-oneshot_model.cuda()
-oneshot_model.eval()
-
-losses = utils.AverageMeter()
-top1 = utils.AverageMeter()
-top5 = utils.AverageMeter()
-criterion = nn.CrossEntropyLoss()
-    
-for i, (inputs, labels) in enumerate(testloader):
-    inputs = inputs.cuda()
-    labels = labels.cuda()
-
-    outputs = oneshot_model(inputs, arch)
-
-    loss = criterion(outputs, labels)
-
-    prec1, prec5 = utils.accuracy(outputs, labels, topk=(1, 5))
-    n = inputs.size(0)
-    losses.update(loss.item(), n)
-    top1.update(prec1.item(), n)
-    top5.update(prec5.item(), n)
-print(top1.avg, top5.avg, losses.avg)
 
 torch.save(oneshot_model.state_dict(), "resnet50_oneshot.pth")
