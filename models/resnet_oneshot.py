@@ -288,7 +288,7 @@ class resnet50_oneshot(nn.Module):
         res=[]
         for i in self.features:
             if isinstance(i, Bottleneck):
-                res.append((0, 0))
+                res.append((0, 0, 0))
             else:
                 res.append(0)
         return tuple(res)
