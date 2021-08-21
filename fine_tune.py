@@ -98,7 +98,7 @@ def fine_tune(model, args, trainloader, testloader, arch, criterion, rank):
 
 def main(rank, world_size):
     args = get_args()
-    model = condensenet86_oneshot()
+    model = condensenet86_oneshot(100)
     for i in range(args.grow):
         model.grow()
     archlist = model.get_all_arch()
@@ -128,7 +128,7 @@ def main(rank, world_size):
     ddp_model = ddp_model.to("cpu")
 
     if rank == 0:
-        torch.save(ddp_model.module.state_dict(), "./resnet164_finetune_supernet.pth")
+        torch.save(ddp_model.module.state_dict(), "./condensenet86_finetune_supernet.pth")
         inputs = torch.randn((1,3,32,32))
         params, flops = utils.get_params_flops(model, inputs, arch)
         print("pamras:", params, "flops:", flops)

@@ -154,8 +154,8 @@ def search(args, model, archlist, validate_loader, criterion, backup_model):
 
 def main():
     args = get_args()
-    model = condensenet86_oneshot()
-    backup_model = condensenet86_oneshot()
+    model = condensenet86_oneshot(100)
+    backup_model = condensenet86_oneshot(100)
     for i in range(args.grow):
         model.grow()
         backup_model.grow()

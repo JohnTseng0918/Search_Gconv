@@ -1,7 +1,6 @@
 """
 Create train, valid, test iterators for CIFAR-10 [1].
 Easily extended to MNIST, CIFAR-100 and Imagenet.
-
 [1]: https://discuss.pytorch.org/t/feedback-on-pytorch-for-kaggle-competitions/2252/4
 """
 
@@ -25,9 +24,7 @@ def get_train_valid_loader(data_dir,
     Utility function for loading and returning train and valid
     multi-process iterators over the CIFAR-10 dataset. A sample
     9x9 grid of the images can be optionally displayed.
-
     If using CUDA, num_workers should be set to 1 and pin_memory to True.
-
     Params
     ------
     - data_dir: path directory to the dataset.
@@ -42,7 +39,6 @@ def get_train_valid_loader(data_dir,
     - num_workers: number of subprocesses to use when loading the dataset.
     - pin_memory: whether to copy tensors into CUDA pinned memory. Set it to
       True if using GPU.
-
     Returns
     -------
     - train_loader: training set iterator.
@@ -116,11 +112,11 @@ def get_train_valid_loader(data_dir,
             download=True, transform=valid_transform,
         )
     elif data=="imagenet":
-        train_dataset = datasets.ImageFolder(
-            root=data_dir, transform=imagenet_train_transform
+        train_dataset = datasets.ImageNet(
+            root=data_dir, split='train',transform=imagenet_train_transform
         )
-        valid_dataset = datasets.ImageFolder(
-            root=data_dir, transform=imagenet_valid_transform
+        valid_dataset = datasets.ImageNet(
+            root=data_dir, split='train',transform=imagenet_valid_transform
         )
 
     num_train = len(train_dataset)
@@ -160,9 +156,7 @@ def get_test_loader(data_dir,
     """
     Utility function for loading and returning a multi-process
     test iterator over the CIFAR-10 dataset.
-
     If using CUDA, num_workers should be set to 1 and pin_memory to True.
-
     Params
     ------
     - data_dir: path directory to the dataset.
@@ -171,7 +165,6 @@ def get_test_loader(data_dir,
     - num_workers: number of subprocesses to use when loading the dataset.
     - pin_memory: whether to copy tensors into CUDA pinned memory. Set it to
       True if using GPU.
-
     Returns
     -------
     - data_loader: test set iterator.
@@ -210,8 +203,8 @@ def get_test_loader(data_dir,
             download=True, transform=transform,
         )
     elif data=="imagenet":
-        dataset = datasets.ImageFolder(
-            root=data_dir, transform=imagenet_transform
+        dataset = datasets.ImageNet(
+            root=data_dir, split='val',transform=imagenet_transform
         )
 
     data_loader = torch.utils.data.DataLoader(
