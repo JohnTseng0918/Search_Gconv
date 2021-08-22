@@ -112,11 +112,11 @@ def get_train_valid_loader(data_dir,
             download=True, transform=valid_transform,
         )
     elif data=="imagenet":
-        train_dataset = datasets.ImageFolder(
-            root=data_dir, transform=imagenet_train_transform
+        train_dataset = datasets.ImageNet(
+            root=data_dir, split='train',transform=imagenet_train_transform
         )
-        valid_dataset = datasets.ImageFolder(
-            root=data_dir, transform=imagenet_valid_transform
+        valid_dataset = datasets.ImageNet(
+            root=data_dir, split='train',transform=imagenet_valid_transform
         )
 
     num_train = len(train_dataset)
@@ -205,8 +205,8 @@ def get_test_loader(data_dir,
             download=True, transform=transform,
         )
     elif data=="imagenet":
-        dataset = datasets.ImageFolder(
-            root=data_dir, transform=imagenet_transform
+        dataset = datasets.ImageNet(
+            root=data_dir, split='val',transform=imagenet_transform
         )
 
     data_loader = torch.utils.data.DataLoader(

@@ -4,7 +4,7 @@ import utils
 import torch
 import torch.optim as optim
 import torch.nn as nn
-from resnet_oneshot_test import ResNet, Bottleneck
+from models.resnet_oneshot_test import ResNet, Bottleneck
 
 dataset = "imagenet"
 path = "./data/" + dataset
