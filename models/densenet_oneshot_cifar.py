@@ -1,8 +1,13 @@
+from __future__ import absolute_import
+from __future__ import unicode_literals
+from __future__ import print_function
+from __future__ import division
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from functools import reduce
+import math
 
 def factors(n):
     """
@@ -16,94 +21,48 @@ def get_groups_choice_list(inchannel, outchannel):
     g_list = list(sorted(fin.intersection(fout)))
     return g_list
 
-def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
-    """3x3 convolution with padding"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=dilation, groups=groups, bias=False, dilation=dilation)
-
-
-def conv1x1(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1) -> nn.Conv2d:
-    """1x1 convolution"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, groups=groups, bias=False)
-
-
-class Bottleneck(nn.Module):
-    """ Bottleneck module used in CondenseNet. """
-
-    def __init__(self,
-                 in_channels,
-                 expansion=4,
-                 growth_rate=12,
-                 drop_rate=0):
-        """ CTOR.
-        Args:
-          in_channels(int)
-          expansion(int)
-          growth_rate(int): the k value
-          drop_rate(float): the dropout rate
-        """
-        super().__init__()
-
-        # the input channels to the second 3x3 convolution layer
-        channels = expansion * growth_rate
-
-        # conv1: C -> 4 * k (according to the paper)
-        self.bn1 = nn.BatchNorm2d(in_channels)
-        self.choice0 = nn.ModuleList()
-        self.choice0.append(conv1x1(in_channels, channels))
-        #self.conv1 = conv1x1(in_channels, channels)
-        # conv2: 4 * k -> k
-        self.bn2 = nn.BatchNorm2d(channels)
-        self.choice1 = nn.ModuleList()
-        self.choice1.append(conv3x3(channels, growth_rate))
-        # self.conv2 = conv3x3(channels, growth_rate)
+class Conv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, 
+                 stride=1, padding=0, groups=1):
+        super(Conv, self).__init__()
+        self.norm = nn.BatchNorm2d(in_channels)
         self.relu = nn.ReLU(inplace=True)
-
-        self.drop_rate = drop_rate
+        self.choice = nn.ModuleList()
+        self.choice.append(nn.Conv2d(in_channels, out_channels,
+                                    kernel_size=kernel_size,
+                                    stride=stride,
+                                    padding=padding, bias=False,
+                                    groups=groups))
 
     def forward(self, x, arch):
-        """ forward """
-        # conv1
-        out = self.bn1(x)
-        out = self.relu(out)
-        # dropout (This is the different part)
-        if self.drop_rate > 0:
-            out = F.dropout(out, p=self.drop_rate, training=self.training)
-        out = self.choice0[arch[0]](out)
-        #out = self.conv1(out)
-        # conv2
-        out = self.bn2(out)
-        out = self.relu(out)
-        out = self.choice1[arch[1]](out)
-        #out = self.conv2(out)
+        x = self.norm(x)
+        x = self.relu(x)
+        x = self.choice[arch](x)
+        return x
 
-        # concatenate results
-        out = torch.cat((x, out), 1)
-        return out
-
-    def grow_choice(self):
-        outchannel, inchannel, _, _ = self.choice0[0].weight.shape
+    def grow_chioce(self):
+        outchannel, inchannel, _, _ = self.choice[0].weight.shape
         g_list = get_groups_choice_list(inchannel, outchannel)
-        if len(g_list) > len(self.choice0):
-            conv = conv1x1(inchannel, outchannel, self.choice0[0].stride, g_list[len(self.choice0)])
-            self.choice0.append(conv)
-
-        outchannel, inchannel, _, _ = self.choice1[0].weight.shape
-        g_list = get_groups_choice_list(inchannel, outchannel)
-        if len(g_list) > len(self.choice1):
-            conv = conv3x3(inchannel, outchannel, self.choice1[0].stride, g_list[len(self.choice1)], 1)
-            self.choice1.append(conv)
-
-        return tuple([len(self.choice0), len(self.choice1)])
+        if len(g_list) > len(self.choice):
+            conv = nn.Conv2d(inchannel, outchannel,
+                                    kernel_size=self.choice[0].kernel_size,
+                                    stride=self.choice[0].stride,
+                                    padding=self.choice[0].padding, bias=False,
+                                    groups=g_list[len(self.choice)])
+            self.choice.append(conv)
+        return len(self.choice)
 
     def grow_choice_with_pretrained(self):
-        outchannel, inchannel, _, _ = self.choice0[0].weight.shape
+        outchannel, inchannel, _, _ = self.choice[0].weight.shape
         g_list = get_groups_choice_list(inchannel, outchannel)
-        if len(g_list) > len(self.choice0):
-            g = g_list[len(self.choice0)]
-            conv = conv1x1(inchannel, outchannel, self.choice0[0].stride, g)
-            # move groups = 1 weight to groups = n
-            W = self.choice0[0].weight
+        if len(g_list) > len(self.choice):
+            g = g_list[len(self.choice)]
+            conv = nn.Conv2d(inchannel, outchannel,
+                                    kernel_size=self.choice[0].kernel_size,
+                                    stride=self.choice[0].stride,
+                                    padding=self.choice[0].padding, bias=False,
+                                    groups=g_list[len(self.choice)])
+            W = self.choice[0].weight
             outc_start, intc_start = 0, 0
             outc_interval = int(outchannel/g)
             intc_interval = int(inchannel/g)
@@ -114,96 +73,98 @@ class Bottleneck(nn.Module):
                 intc_start+=intc_interval
             wnew = torch.cat(tuple(tensorlist),0)
             conv.weight = torch.nn.Parameter(wnew)
-            self.choice0.append(conv)
+            self.choice.append(conv)
+        return len(self.choice)
 
-        outchannel, inchannel, _, _ = self.choice1[0].weight.shape
-        g_list = get_groups_choice_list(inchannel, outchannel)
-        if len(g_list) > len(self.choice1):
-            g = g_list[len(self.choice1)]
-            conv = conv3x3(inchannel, outchannel, self.choice1[0].stride, g, 1)
-            # move groups = 1 weight to groups = n
-            W = self.choice1[0].weight
-            outc_start, intc_start = 0, 0
-            outc_interval = int(outchannel/g)
-            intc_interval = int(inchannel/g)
-            tensorlist=[]
-            for i in range(g):
-                tensorlist.append(W[outc_start:outc_start+outc_interval, intc_start:intc_start+intc_interval,:,:])
-                outc_start+=outc_interval
-                intc_start+=intc_interval
-            wnew = torch.cat(tuple(tensorlist),0)
-            conv.weight = torch.nn.Parameter(wnew)
-            self.choice1.append(conv)
+def make_divisible(x, y):
+    return int((x // y + 1) * y) if x % y else int(x)
 
-        return tuple([len(self.choice0), len(self.choice1)])
+class _DenseLayer(nn.Module):
+    def __init__(self, in_channels, growth_rate, group_1x1, group_3x3, bottleneck):
+        super(_DenseLayer, self).__init__()
+        self.group_1x1 = group_1x1
+        self.group_3x3 = group_3x3
+        ### 1x1 conv i --> b*k
+        self.conv_1 = Conv(in_channels, bottleneck * growth_rate,
+                           kernel_size=1, groups=self.group_1x1)
+        ### 3x3 conv b*k --> k
+        self.conv_2 = Conv(bottleneck * growth_rate, growth_rate,
+                           kernel_size=3, padding=1, groups=self.group_3x3)
 
+    def forward(self, x, arch):
+        x_ = x
+        x = self.conv_1(x, arch[0])
+        x = self.conv_2(x, arch[1])
+        return torch.cat([x_, x], 1)
+    
+    def grow_choice(self):
+        len1 = self.conv_1.grow_chioce()
+        len2 = self.conv_2.grow_chioce()
+        return(len1, len2)
+    
+    def grow_choice_with_pretrained(self):
+        len1 = self.conv_1.grow_choice_with_pretrained()
+        len2 = self.conv_2.grow_choice_with_pretrained()
+        return(len1, len2)
 
-class DenseBlock(nn.Sequential):
-    """ Handles the logic of creating Dense layers """
-
-    def __init__(self, num_layers, in_channels, growth_rate):
-        """ CTOR.
-        Args:
-          num_layers(int): from stages
-          growth_rate(int): from growth
-        """
-        super().__init__()
-
+class _DenseBlock(nn.Sequential):
+    def __init__(self, num_layers, in_channels, growth_rate, group_1x1, group_3x3, bottleneck):
+        super(_DenseBlock, self).__init__()
         for i in range(num_layers):
-            layer = Bottleneck(in_channels + i * growth_rate, growth_rate=growth_rate)
+            layer = _DenseLayer(in_channels + i * growth_rate, growth_rate, group_1x1, group_3x3, bottleneck)
             self.add_module('denselayer_%d' % (i + 1), layer)
 
 
-class Transition(nn.Module):
-    """ CondenseNet's transition, no convolution involved """
-
-    def __init__(self, in_channels):
-        super().__init__()
+class _Transition(nn.Module):
+    def __init__(self, in_channels, out_channels, group_1x1):
+        super(_Transition, self).__init__()
+        self.conv = Conv(in_channels, out_channels,
+                         kernel_size=1, groups=group_1x1)
         self.pool = nn.AvgPool2d(kernel_size=2, stride=2)
 
     def forward(self, x, arch):
+        x = self.conv(x, arch)
         x = self.pool(x)
         return x
 
-class condensenet86_oneshot(nn.Module):
-    """ Main function to initialise CondenseNet. """
 
-    def __init__(self, num_classes=10):
-        """ CTOR.
-        Args:
-          stages(list): per layer depth
-          growth(list): per layer growth rate
-        """
-        super().__init__()
+class DenseNet(nn.Module):
+    def __init__(self, stages, growth, num_classes, data, bottleneck, group_1x1, group_3x3, reduction):
 
-        self.stages = [14, 14, 14]
-        self.growth = [8, 16, 32]
+        super(DenseNet, self).__init__()
+
+        self.stages = stages
+        self.growth = growth
+        self.reduction = reduction
+        self.bottleneck = bottleneck
+        self.group_1x1 = group_1x1
+        self.group_3x3 = group_3x3
         assert len(self.stages) == len(self.growth)
+        #self.args = args
+        if data in ['cifar10', 'cifar100']:
+            self.init_stride = 1
+            self.pool_size = 8
+        else:
+            self.init_stride = 2
+            self.pool_size = 7
 
-        # NOTE(): we removed the imagenet related branch
-        self.init_stride = 1
-        self.pool_size = 8
-
-        
-        # Initial nChannels should be 3
-        # NOTE: this is a variable that traces the output size
+        ### Set initial width to 2 x growth_rate[0]
         self.num_features = 2 * self.growth[0]
-
-        # Dense-block 1 (224x224)
-        # NOTE: this block will not be turned into a GConv
-        self.init_conv = nn.Conv2d(3, self.num_features, kernel_size=3, stride=self.init_stride,padding=1, bias=False)
+        ### Dense-block 1 (224x224)
+        self.init_conv = nn.Conv2d(3, self.num_features,kernel_size=3,stride=self.init_stride,padding=1,bias=False)
         self.features = nn.ModuleList()
-        for i in range(len(self.stages)):
-            # Dense-block i
-            self.add_block(i)
 
+        for i in range(len(self.stages)):
+            ### Dense-block i
+            self.add_block(i)
+        ### Linear layer
         self.classifier = nn.Linear(self.num_features, num_classes)
 
-        # initialize
+        ### initialize
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(
-                    m.weight, mode='fan_out', nonlinearity='relu')
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
@@ -211,65 +172,76 @@ class condensenet86_oneshot(nn.Module):
                 m.bias.data.zero_()
 
     def add_block(self, i):
-        # Check if ith is the last one
+        ### Check if ith is the last one
         last = (i == len(self.stages) - 1)
-        block = DenseBlock(
+        block = _DenseBlock(
             num_layers=self.stages[i],
             in_channels=self.num_features,
-            growth_rate=self.growth[i])
-
+            growth_rate=self.growth[i],
+            group_1x1=self.group_1x1, 
+            group_3x3=self.group_3x3, 
+            bottleneck=self.bottleneck
+        )
+        #self.features.add_module('denseblock_%d' % (i + 1), block)
         for idx in range(len(block)):
             self.features.append(block[idx])
-
         self.num_features += self.stages[i] * self.growth[i]
         if not last:
-            trans = Transition(in_channels=self.num_features)
+            out_features = make_divisible(math.ceil(self.num_features * self.reduction),
+                                          self.group_1x1)
+            trans = _Transition(in_channels=self.num_features,
+                                out_channels=out_features,
+                                group_1x1=self.group_1x1)
             self.features.append(trans)
+            self.num_features = out_features
         else:
             self.features.append(nn.BatchNorm2d(self.num_features))
-            self.features.append(nn.ReLU(inplace=True))
+            self.features.append( nn.ReLU(inplace=True))
+            ### Use adaptive ave pool as global pool
             self.features.append(nn.AvgPool2d(self.pool_size))
 
     def forward(self, x, architecture):
-        x = self.init_conv(x)
+        features = self.init_conv(x)
 
         for i, arch_id in enumerate(architecture[:-3]):
-            x = self.features[i](x, arch_id)
-        x = self.features[-3](x)
-        x = self.features[-2](x)
-        x = self.features[-1](x)
+            features = self.features[i](features, arch_id)
+        features = self.features[-3](features)
+        features = self.features[-2](features)
+        features = self.features[-1](features)
 
-        out = x.view(x.size(0), -1)
+        out = features.view(features.size(0), -1)
         out = self.classifier(out)
         return out
-
+    
     def grow(self):
         self.all_choice_list = []
         for i in range(len(self.features)):
-            if isinstance(self.features[i] , Bottleneck):
+            if isinstance(self.features[i] , _DenseLayer):
                 n = self.features[i].grow_choice()
                 self.all_choice_list.append(n)
             else:
                 self.all_choice_list.append(1)
-
+    
     def grow_with_pretrained(self):
         self.all_choice_list = []
         for i in range(len(self.features)):
-            if isinstance(self.features[i] , Bottleneck):
+            if isinstance(self.features[i] , _DenseLayer):
                 n = self.features[i].grow_choice_with_pretrained()
                 self.all_choice_list.append(n)
             else:
                 self.all_choice_list.append(1)
     
-
     def get_all_arch(self):
         return tuple(self.all_choice_list)
-
+    
     def get_origin_arch(self):
         res=[]
         for i in self.features:
-            if isinstance(i, Bottleneck):
+            if isinstance(i, _DenseLayer):
                 res.append((0, 0))
             else:
                 res.append(0)
         return tuple(res)
+
+def DenseNet_BC_100_k_12(num_classes=100,data="cifar100"):
+    return DenseNet(stages=[16,16,16],growth=[12,12,12],num_classes=num_classes,data=data,bottleneck=4,group_1x1=1,group_3x3=1,reduction=0.5)

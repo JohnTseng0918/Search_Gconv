@@ -3,3 +3,4 @@ torchvision
 torchaudio
 thop
 pytorchcv
+scipy

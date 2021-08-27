@@ -33,7 +33,13 @@ def check_constrain(model, arch, args):
 def random_model(archlist):
     retlist = []
     for i in archlist:
-        retlist.append(random.randint(0, i-1))
+        if isinstance(i, tuple):
+            t = []
+            for num in i:
+                t.append(random.randint(0, num-1))
+            retlist.append(tuple(t))
+        else:
+            retlist.append(random.randint(0, i-1))
     return tuple(retlist)
 
 def validate(validate_loader, model, criterion, arch):
@@ -103,7 +109,15 @@ def search(args, model, archlist, validate_loader, criterion, backup_model):
             s1, s2 = random.sample(topk, 2)
             p1, _ = s1
             p2, _ = s2
-            child = [random.choice([i,j]) for i,j in zip(p1,p2)]
+            child = []
+            for i,j in zip(p1,p2):
+                if isinstance(i, tuple):
+                    t = []
+                    for idx in range(len(i)):
+                        t.append(random.choice([i[idx],j[idx]]))
+                    child.append(tuple(t))
+                else:
+                    child.append(random.choice([i,j]))
             if check_constrain(backup_model, child, args):
                 crossover_child.append(tuple(child))
         
@@ -118,7 +132,13 @@ def search(args, model, archlist, validate_loader, criterion, backup_model):
             p2 = []
             for i in range(len(p1)):
                 if random.random() < prob:
-                    p2.append(random.randint(0, archlist[i]-1))
+                    if isinstance(p1[i], tuple):
+                        t = []
+                        for j in range(len(p1[i])):
+                            t.append(random.randint(0, archlist[i][j]-1))
+                        p2.append(tuple(t))
+                    else:
+                        p2.append(random.randint(0, archlist[i]-1))
                 else:
                     p2.append(p1[i])
             if check_constrain(backup_model, p2, args):
