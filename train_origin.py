@@ -9,7 +9,7 @@ import shutil
 import time
 import math
 import warnings
-from models.densenet_oneshot_cifar import condensenet86_oneshot
+from models.densenet_oneshot_cifar import DenseNet_BC_100_k_12
 from models.resnet_oneshot_cifar import resnet164_oneshot
 
 parser = argparse.ArgumentParser(description='PyTorch Condensed Convolutional Networks')
@@ -102,7 +102,7 @@ def main():
     global args, best_prec1
 
     ### Calculate FLOPs & Param
-    model = condensenet86_oneshot(100)
+    model = DenseNet_BC_100_k_12()
     """
     print(model)
     if args.data in ['cifar10', 'cifar100']:
@@ -119,7 +119,7 @@ def main():
     args.filename = "model"
 
     ### Create model
-    model = condensenet86_oneshot(100)
+    model = DenseNet_BC_100_k_12()
     arch = model.get_origin_arch()
 
     model.cuda()
@@ -135,8 +135,8 @@ def main():
 
     ### Data loading 
     if args.data == "cifar10":
-        normalize = transforms.Normalize(mean=[0.4914, 0.4824, 0.4467],
-                                         std=[0.2471, 0.2435, 0.2616])
+        normalize = transforms.Normalize(mean=[0.4914, 0.4822, 0.4465],
+                                         std=[0.2023, 0.1994, 0.2010])
         train_set = datasets.CIFAR10('./data/cifar10', train=True, download=True,
                                      transform=transforms.Compose([
                                          transforms.RandomCrop(32, padding=4),
@@ -150,8 +150,8 @@ def main():
                                        normalize,
                                    ]))
     elif args.data == "cifar100":
-        normalize = transforms.Normalize(mean=[0.5071, 0.4867, 0.4408],
-                                         std=[0.2675, 0.2565, 0.2761])
+        normalize = transforms.Normalize(mean=[0.4914, 0.4822, 0.4465],
+                                         std=[0.2023, 0.1994, 0.2010])
         train_set = datasets.CIFAR100('./data/cifar100', train=True, download=True,
                                      transform=transforms.Compose([
                                          transforms.RandomCrop(32, padding=4),
