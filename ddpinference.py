@@ -39,6 +39,7 @@ def main(rank, world_size):
     criterion = nn.CrossEntropyLoss()
 
     with torch.no_grad():
+        counter = torch.zeros((3), device=torch.device(f'cuda:{rank}'))
         for i, (inputs, labels) in enumerate(validate_loader):
             inputs = inputs.to(rank)
             labels = labels.to(rank)
@@ -52,10 +53,12 @@ def main(rank, world_size):
             losses.update(loss.item(), n)
             top1.update(prec1.item(), n)
             top5.update(prec5.item(), n)
+            counter[0] += prec1.item()*n
+            counter[1] += prec5.item()*n
+            counter[2] += n
+        dist.reduce(counter, 0)
 
-            print(top1.avg, top5.avg, losses.avg)
-    print("-----------------------------------------------------------------------------")
-    print(top1.avg, top5.avg, losses.avg)
+    print(counter)
     cleanup()
 
 if __name__ == "__main__":
