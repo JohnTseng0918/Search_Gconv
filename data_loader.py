@@ -10,6 +10,7 @@ import numpy as np
 from torchvision import datasets
 from torchvision import transforms
 from torch.utils.data.sampler import SubsetRandomSampler
+from sampler import DistributedEvalSampler
 
 def get_train_valid_loader(data_dir,
                            batch_size,
@@ -135,7 +136,7 @@ def get_train_valid_loader(data_dir,
     val_ds = torch.utils.data.Subset(valid_dataset, valid_idx)
 
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_ds)
-    val_sampler = torch.utils.data.distributed.DistributedSampler(val_ds)
+    val_sampler = DistributedEvalSampler(val_ds)
 
     train_loader = torch.utils.data.DataLoader(
         train_ds, batch_size=batch_size, sampler=train_sampler,
@@ -209,8 +210,9 @@ def get_test_loader(data_dir,
             root=data_dir, split='val',transform=imagenet_transform
         )
 
+    data_sampler = DistributedEvalSampler(dataset)
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle,
+        dataset, batch_size=batch_size, sampler = data_sampler,
         num_workers=num_workers, pin_memory=pin_memory,
     )
 

@@ -8,8 +8,7 @@ import random
 import utils
 import torch.optim as optim
 from models.resnet_oneshot_cifar import resnet164_oneshot
-from models.resnet_oneshot_test import *
-from models.densenet_oneshot_cifar import condensenet86_oneshot
+from models.resnet_oneshot import resnet50_oneshot
 from data_loader import get_train_valid_loader
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -84,7 +83,6 @@ def train(model, args, trainloader, archlist, criterion, rank):
             losses.update(loss.item(), n)
             top1.update(prec1.item(), n)
             top5.update(prec5.item(), n)
-            print("top1 acc:", top1.avg, "top5 acc:", top5.avg, "avg loss:", losses.avg)
 
         scheduler.step()
 
@@ -93,7 +91,7 @@ def train(model, args, trainloader, archlist, criterion, rank):
 def main(rank, world_size):
     args = get_args()
     model = resnet50_oneshot()
-    model.load_state_dict(torch.load("./pretrained/resnet50_oneshot.pth"))
+    model.load_state_dict(torch.load("resnet50_oneshot.pth"))
     for i in range(args.grow):
         model.grow_with_pretrained()
     archlist = model.get_all_arch()
@@ -109,7 +107,7 @@ def main(rank, world_size):
     trainloader, validateloader = get_train_valid_loader(path, args.batch_size, augment=True, random_seed=args.seed, data=args.dataset)
     train(ddp_model, args, trainloader, archlist, criterion, rank)
     if rank==0:
-        torch.save(ddp_model.module.state_dict(), "./resnet50_supernet.pth")
+        torch.save(ddp_model.module.state_dict(), "resnet50_supernet.pth")
     cleanup()
 
 if __name__ == "__main__":

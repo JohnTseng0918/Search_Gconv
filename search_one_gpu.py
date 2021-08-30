@@ -5,7 +5,6 @@ import argparse
 import utils
 from models.resnet_oneshot_cifar import resnet164_oneshot
 from models.resnet_oneshot import resnet50_oneshot
-from models.densenet_oneshot_cifar import condensenet86_oneshot
 from data_loader_noddp import get_train_valid_loader, get_test_loader
 
 def get_args():
@@ -154,8 +153,8 @@ def search(args, model, archlist, validate_loader, criterion, backup_model):
 
 def main():
     args = get_args()
-    model = condensenet86_oneshot(100)
-    backup_model = condensenet86_oneshot(100)
+    model = resnet164_oneshot()
+    backup_model = resnet164_oneshot()
     for i in range(args.grow):
         model.grow()
         backup_model.grow()
