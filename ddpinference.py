@@ -26,6 +26,7 @@ def run_demo(demo_fn, world_size):
 
 
 def main(rank, world_size):
+    setup(rank, world_size)
     model = ptcv_get_model("resnet164bn_cifar100", pretrained=True)
     model = model.to(rank)
     model.eval()
@@ -55,6 +56,7 @@ def main(rank, world_size):
             print(top1.avg, top5.avg, losses.avg)
     print("-----------------------------------------------------------------------------")
     print(top1.avg, top5.avg, losses.avg)
+    cleanup()
 
 if __name__ == "__main__":
     n_gpus = torch.cuda.device_count()

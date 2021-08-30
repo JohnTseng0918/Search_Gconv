@@ -209,8 +209,9 @@ def get_test_loader(data_dir,
             root=data_dir, split='val',transform=imagenet_transform
         )
 
+    data_sampler = torch.utils.data.distributed.DistributedSampler(dataset)
     data_loader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle,
+        dataset, batch_size=batch_size, sampler = data_sampler,
         num_workers=num_workers, pin_memory=pin_memory,
     )
 
