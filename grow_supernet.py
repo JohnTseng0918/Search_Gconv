@@ -133,8 +133,11 @@ def main(rank, world_size):
         count+=1
         archlist = model.get_all_arch()
         train(ddp_model, args, trainloader, archlist, criterion, rank)
-        flag = check_supernet_constraints(backup_model, archlist, args)
-        if flag==True:
+        flag = [None]
+        if dist.get_rank() == 0:
+            flag[0] = check_supernet_constraints(backup_model, archlist, args)
+        dist.broadcast_object_list(flag, src = 0)
+        if flag[0]==True:
             break
     print("total grow:", count)
 
