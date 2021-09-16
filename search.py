@@ -87,7 +87,6 @@ def search(args, model, archlist, validate_loader, criterion, backup_model, rank
     populist = []
     topk = []
     count = [0]
-    record = set()
     if dist.get_rank() == 0:
         while count[0] < args.population:
             arch = random_model(archlist)
@@ -108,18 +107,14 @@ def search(args, model, archlist, validate_loader, criterion, backup_model, rank
         for p in populist:
             dist.barrier()
             print("arch:", p)
-            if p in record:
-                print("this arch have been inference")
-            else:
-                counter = validate(validate_loader, model, criterion, p)
-                dist.reduce(counter, 0)
-                acc1 = counter[0].item() / counter[2].item()
-                acc5 = counter[1].item() / counter[2].item()
-                if dist.get_rank()==0:
-                    #print(rank, counter)
-                    print("acc1:", acc1, "acc5:", acc5)
-                    topk.append((p, acc1))
-                record.add(p)
+            counter = validate(validate_loader, model, criterion, p)
+            dist.reduce(counter, 0)
+            acc1 = counter[0].item() / counter[2].item()
+            acc5 = counter[1].item() / counter[2].item()
+            if dist.get_rank()==0:
+                #print(rank, counter)
+                print("acc1:", acc1, "acc5:", acc5)
+                topk.append((p, acc1))
         
         if dist.get_rank()==0:
             #update topk
